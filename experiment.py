@@ -391,10 +391,6 @@ class Exp(object):
 
                 print("-----------------")
                 for epoch in range(self.args.train_epochs):
-
-                    print(" IF you see this, there is no Training")
-                    break
-                    
                     train_loss = []
                     self.model.train()
                     epoch_time = time.time()
