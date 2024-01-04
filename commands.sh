@@ -1,0 +1,1 @@
+python main.py --data-name oppo --shuffle --model-type attend --seed 2 --root-path ../datasets --filter-scaling-factor 1.0 --mixup-probability 1.0 --random-augmentation-prob 1.0
