@@ -1,5 +1,5 @@
 # ---- import models ---------------
-from models.smil import SMIL
+from models.ShaSpec import ShaSpec
 from models.Attend import AttendDiscriminate
 from models.SA_HAR import SA_HAR
 from models.deepconvlstm import DeepConvLSTM
@@ -155,14 +155,22 @@ class model_builder(nn.Module):
                                        self.args.filter_scaling_factor,
                                        config)
             print("Build the DeepConvLSTM model!")
-        elif self.args.model_type == "smil":
+        elif self.args.model_type == "shaspec":
             config_file = open('configs/model.yaml', mode='r')
-            config = yaml.load(config_file, Loader=yaml.FullLoader)["smil"]
-            self.model  = SMIL((1,f_in, self.args.input_length, self.args.c_in ), 
+            config = yaml.load(config_file, Loader=yaml.FullLoader)["shaspec"]
+            # Example usage:
+            # num_modalities = 3
+            # num_classes = 10
+            # input_dim = 128  # Example input dimension
+            # hidden_dim = 256  # Example hidden dimension
+            # model = ShaSpec(num_modalities, num_classes, input_dim, hidden_dim)
+            # modalities_data = [torch.randn(1, input_dim), None, torch.randn(1, input_dim)]  # Example data with a missing modality
+            # output = model(modalities_data)
+            self.model  = ShaSpec((1,f_in, self.args.input_length, self.args.c_in ), 
                                self.args.num_classes,
                                self.args.filter_scaling_factor,
                                config)
-            print("Build the SMIL model!")
+            print("Build the ShaSpec model!")
         else:
             self.model = Identity()
             print("Build the None model!")
