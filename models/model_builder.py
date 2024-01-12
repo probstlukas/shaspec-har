@@ -1,4 +1,5 @@
 # ---- import models ---------------
+from models.smil import SMIL
 from models.Attend import AttendDiscriminate
 from models.SA_HAR import SA_HAR
 from models.deepconvlstm import DeepConvLSTM
@@ -154,6 +155,14 @@ class model_builder(nn.Module):
                                        self.args.filter_scaling_factor,
                                        config)
             print("Build the DeepConvLSTM model!")
+        elif self.args.model_type == "smil":
+            config_file = open('configs/model.yaml', mode='r')
+            config = yaml.load(config_file, Loader=yaml.FullLoader)["smil"]
+            self.model  = SMIL((1,f_in, self.args.input_length, self.args.c_in ), 
+                               self.args.num_classes,
+                               self.args.filter_scaling_factor,
+                               config)
+            print("Build the SMIL model!")
         else:
             self.model = Identity()
             print("Build the None model!")
