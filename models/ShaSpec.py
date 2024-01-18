@@ -1,38 +1,41 @@
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
+from models.Attend import SelfAttention
 
-# Shared and Specific Encoder Architektur gleich, aber Dimensionen anders, input shapes anders
-# TODO: Paper noch mal genauer anschauen, gibt es Unterschiede zwischen Specific und Shared Encoder bzgl. Architektur?
 class SpecificEncoder(nn.Module):
     """
-    Specific Encoder for each modality.
+    Specific Encoder to capture the unique characteristics of each sensor channel.
     """
-    def __init__(self, input_dim, feature_dim, domain_classes):
+    def __init__(
+        self,
+        input_shape,
+        filter_num,
+        filter_size,
+        activation,
+        sa_div
+    ):
         super(SpecificEncoder, self).__init__()
-        
-        # 1. PART: Four convolutional layers for local context extraction
-        # TODO: Pytorch docs lesen, stride auf 2 setzen. Wieso 2?
+        print("A")
+        ### Part 1: Convolutional layers for local context extraction
+        # Halving the length by 2 with each convolutional layer (assuming height is the temporal dimension)
         self.conv1 = nn.Conv2d(input_shape[1], filter_num, (filter_size, 1), stride=2)
         self.conv2 = nn.Conv2d(filter_num, filter_num, (filter_size, 1), stride=2)
         self.conv3 = nn.Conv2d(filter_num, filter_num, (filter_size, 1), stride=2)
         self.conv4 = nn.Conv2d(filter_num, filter_num, (filter_size, 1), stride=2)
         
-        # 2. PART: Self-attention layer to allow all sensor channels to communicate with each other
+        self.activation = nn.ReLU() if activation == "ReLU" else nn.Tanh()
+
+        ### Part 2: Self-attention layer for inter-sensor channel communication
         self.sa = SelfAttention(filter_num, sa_div)
 
-        # 3. PART: FC layer for sensor channel fusion
-        # Assuming the output of conv4 is [batch, filter_num, height, width]
-        # and we want to combine the sensor channels (width dimension)
-        conv_output_size = filter_num * input_shape[2] // (2**4)  # Adjust based on pooling and stride
-        self.fc_fusion = nn.Linear(conv_output_size, domain_classes)
-        
-        # Domain classifier head
-        # TODO: feature_dim instead of domain_classes as input vector?
-        self.domain_classifier = nn.Linear(domain_classes, domain_classes)
+        ### Part 3: Fully connected layer for sensor channel fusion
+        # Calculate the size for fully connected layer input
+        num_sensor_channels = input_shape[3]  # Number of sensor channels
+        conv_output_size = filter_num * num_sensor_channels
+        feature_dim = 2 * filter_num  # Output feature dimension
+        self.fc_fusion = nn.Linear(conv_output_size, feature_dim)
 
     def forward(self, x):
-        # TODO: reshape
 
         # Apply convolutional layers
         x = self.activation(self.conv1(x))
@@ -40,29 +43,44 @@ class SpecificEncoder(nn.Module):
         x = self.activation(self.conv3(x))
         x = self.activation(self.conv4(x))
 
-        # Apply self-attention on each temporal dimension (along sensor and feature dimensions)
+        # Apply self-attention
+        # The input and output shapes remain the same [batch_size, num_features, sequence_length]
         refined = torch.cat(
             [self.sa(torch.unsqueeze(x[:, :, t, :], dim=3)) for t in range(x.shape[2])],
             dim=-1,
         )
+
+        # Reshape for the fully connected layer
+        x = refined.permute(3, 0, 1, 2)
+        x = x.reshape(x.shape[0], x.shape[1], -1)
+
+        # Pass through fully connected layer
+        x = self.fc_fusion(x)
         
-    #     features = self.feature_extractor(x)
-    #     domain_logits = self.domain_classifier(features)
-    #     return features, domain_logits
+        return x
 
 class SharedEncoder(nn.Module):
+    """
+    Shared Encoder to to extract common features that are informative accross all sensor channels.
+    """
     # Implement the shared encoder
-    # ...
+    # Similar to SpecificEncoder, but different input shape
     pass
 
 class ShaSpec(nn.Module):
-    # def __init__(self, 
-    #             input_shape, 
-    #             nb_classes,
-    #             filter_scaling_factor,
-    #             config):
-    def __init__(self, num_modalities, num_classes, input_dim, hidden_dim):
+    def __init__(
+            self, 
+            num_modalities, 
+            num_classes, 
+            input_dim, 
+            hidden_dim,
+            filter_scaling_factor=1,
+            config = None):
         super(ShaSpec, self).__init__()
+
+        # Scale the hidden layer dimensions as specified by the configuration, allowing for 
+        # flexible model capacity adjustments via the filter_scaling_factor multiplier.
+        self.hidden_dim = int(filter_scaling_factor * config["hidden_dim"]);
         self.num_modalities = num_modalities
         self.specific_encoders = nn.ModuleList([SpecificEncoder(input_dim, hidden_dim) for _ in range(num_modalities)])
         self.shared_encoder = SharedEncoder(input_dim, hidden_dim)
