@@ -33,11 +33,14 @@ class SelfAttention(nn.Module):
     def forward(self, x):
         # Notation from https://arxiv.org/pdf/1805.08318.pdf
         size = x.size()
+        print("size ",size)
         x = x.view(*size[:2], -1)
         f, g, h = self.query(x), self.key(x), self.value(x)
         beta = F.softmax(torch.bmm(f.permute(0, 2, 1).contiguous(), g), dim=1)
         o = self.gamma * torch.bmm(h, beta) + x
-        return o.view(*size).contiguous()
+        o=o.view(*size).contiguous()
+        print(o.shape)
+        return o
 
 
 class TemporalAttention(nn.Module):

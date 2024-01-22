@@ -15,13 +15,13 @@ class SpecificEncoder(nn.Module):
         sa_div
     ):
         super(SpecificEncoder, self).__init__()
-        print("A")
+
         ### Part 1: Convolutional layers for local context extraction
         # Halving the length by 2 with each convolutional layer (assuming height is the temporal dimension)
-        self.conv1 = nn.Conv2d(input_shape[1], filter_num, (filter_size, 1), stride=2)
-        self.conv2 = nn.Conv2d(filter_num, filter_num, (filter_size, 1), stride=2)
-        self.conv3 = nn.Conv2d(filter_num, filter_num, (filter_size, 1), stride=2)
-        self.conv4 = nn.Conv2d(filter_num, filter_num, (filter_size, 1), stride=2)
+        self.conv1 = nn.Conv2d(input_shape[1], filter_num, (filter_size, 1), stride=(2, 1))
+        self.conv2 = nn.Conv2d(filter_num, filter_num, (filter_size, 1), stride=(2, 1))
+        self.conv3 = nn.Conv2d(filter_num, filter_num, (filter_size, 1), stride=(2, 1))
+        self.conv4 = nn.Conv2d(filter_num, filter_num, (filter_size, 1), stride=(2, 1))
         
         self.activation = nn.ReLU() if activation == "ReLU" else nn.Tanh()
 
@@ -31,27 +31,33 @@ class SpecificEncoder(nn.Module):
         ### Part 3: Fully connected layer for sensor channel fusion
         # Calculate the size for fully connected layer input
         num_sensor_channels = input_shape[3]  # Number of sensor channels
-        conv_output_size = filter_num * num_sensor_channels
+        conv_output_size = filter_num * 5 # sequence length after conv
+        # TODO: Funktion schreiben def get_shape_of_conv4, randn initialisieren, durch alle 4 conv4 durchlaufen, output von conv4 bekommen und shape auslesen von length
         feature_dim = 2 * filter_num  # Output feature dimension
         self.fc_fusion = nn.Linear(conv_output_size, feature_dim)
 
     def forward(self, x):
-
+        print(x.shape)
         # Apply convolutional layers
         x = self.activation(self.conv1(x))
+        print(x.shape)
         x = self.activation(self.conv2(x))
+        print(x.shape)
         x = self.activation(self.conv3(x))
+        print(x.shape)
         x = self.activation(self.conv4(x))
+        print(x.shape)
 
         # Apply self-attention
         # The input and output shapes remain the same [batch_size, num_features, sequence_length]
+        # Channel interaction, filter num nicht geändert
         refined = torch.cat(
             [self.sa(torch.unsqueeze(x[:, :, t, :], dim=3)) for t in range(x.shape[2])],
             dim=-1,
         )
-
+        print("After refined:", refined.shape)
         # Reshape for the fully connected layer
-        x = refined.permute(3, 0, 1, 2)
+        x = refined.permute(0, 2, 1, 3)
         x = x.reshape(x.shape[0], x.shape[1], -1)
 
         # Pass through fully connected layer
