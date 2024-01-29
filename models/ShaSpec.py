@@ -64,7 +64,7 @@ class SpecificEncoder(nn.Module):
         print("After applying conv layer 3: ", x.shape)
         x = self.activation(self.conv4(x))
         print("After applying conv layers: ", x.shape)
-        print("--> B x F x T* x C")
+        print("--> B x F' x T* x C")
         # --> B x F' x T^* x C
 
         ### Apply self-attention to each time step in the sequence
@@ -136,16 +136,20 @@ class SharedEncoder(nn.Module):
         filter_num,
         filter_size,
         activation,
-        sa_div
+        sa_div,
+        weighted_sum = False
     ):
         super(SharedEncoder, self).__init__()
 
-        self.modalities_num = modalities_num
-        self.num_of_sensor_channels = input_shape[3]
+        self.weighted_sum = weighted_sum
 
-        # Concatenate modalities
-        input_shape = (input_shape[0], input_shape[1], input_shape[2], input_shape[3] * modalities_num)
-        print("Sha Enc input shape: ", input_shape)
+        if not weighted_sum:
+            self.modalities_num = modalities_num
+            self.num_of_sensor_channels = input_shape[3]
+
+            # Concatenate modalities
+            input_shape = (input_shape[0], input_shape[1], input_shape[2], input_shape[3] * modalities_num)
+            print("Sha Enc input shape: ", input_shape)
 
         ### Part 1: Convolutional layers for local context extraction
         # Halving the length by 2 with each convolutional layer (assuming height is the temporal dimension)
@@ -168,18 +172,6 @@ class SharedEncoder(nn.Module):
         self.fc_fusion = nn.Linear(filter_num * seq_length, feature_dim)
 
     def forward(self, x):
-        """
-        Perform a forward pass of the SharedEncoder model.
-
-        Args:
-            x (Tensor): The input tensor of shape (batch_size, filter_num, temp_length, num_of_sensor_channels).
-        
-        Returns:
-            Tensor: The output tensor after applying convolutions, self-attention, and a fully connected layer.
-        
-        The function applies a series of convolutional layers to extract features from each sensor channel, followed by a self-attention mechanism to refine these features. 
-        Finally, it reshapes and passes the output through a fully connected layer for sensor channel fusion.
-        """
         # B F T C
         print(x.shape)
         ### Apply convolutional layers
@@ -218,14 +210,17 @@ class SharedEncoder(nn.Module):
         # Reshape and apply the FC layer
         x = self.fc_fusion(x)
 
-        print("Before splitting: ", x.shape)
-        # Split the tensor back into N separate tensors along the second dimension C
-        # Each tensor in the list corresponds to one modality
-        split_tensors = torch.split(x, self.num_of_sensor_channels, dim=1)
+        if not self.weighted_sum:
+            print("Before splitting: ", x.shape)
+            # Split the tensor back into N separate tensors along the second dimension C
+            # Each tensor in the list corresponds to one modality
+            split_tensors = torch.split(x, self.num_of_sensor_channels, dim=1)
 
-        for i, tensor in enumerate(split_tensors):
-            print(f"After splitting:{i} ", tensor.shape)
-        return split_tensors
+            for i, tensor in enumerate(split_tensors):
+                print(f"After splitting:{i} ", tensor.shape)
+            return split_tensors
+
+        return x
     
     def get_shape_of_conv4(self, input_shape):
         """
@@ -251,32 +246,45 @@ class SharedEncoder(nn.Module):
         # Return the shape of the output
         return x.shape
 
-class ShaSpec(nn.Module):
+class ResidualBlock(nn.Module):
     def __init__(
         self,
-        input,
-        number_class, 
-        modalities_num,
-        sa_div                         = 8,
-        filter_num                     = 64,        
-        filter_size                    = 5,
-        activation = "ReLU",
-        decoder_type = "fclayer" # or "convtrans"
+        filter_num,
     ):
-        super(ShaSpec, self).__init__()
-
-        # Store decoder_type as an attribute
-        self.decoder_type = decoder_type
-
-        self.modalities_num = modalities_num
-        self.num_of_sensor_channels = input[3]
-        # Individual specific encoders
-        self.specific_encoders = nn.ModuleList([SpecificEncoder(input, filter_num, filter_size, activation, sa_div) for _ in range(modalities_num)])
-        # One shared encoder for all modalities
-        self.shared_encoder = SharedEncoder(modalities_num, input, filter_num, filter_size, activation, sa_div)
+        super(ResidualBlock, self).__init__()
 
         # Linear projection
         self.fc_proj = nn.Linear(4 * filter_num, 2 * filter_num)
+
+    def forward(self, specific_features, shared_features):
+        # List of extracted features
+        modality_embeddings = []
+        for specific, shared in zip(specific_features, shared_features):
+            # Concatenate
+            concatenated = torch.cat((specific, shared), dim=2)
+            print("CONCATENATED: ", concatenated.shape)
+
+            # Linear projection for fusion
+            projected = self.fc_proj(concatenated)
+            print("PROJECTED: ", projected.shape)
+            print("-"*32)
+            print(projected.shape)
+            print(shared.shape)
+
+            # Residual block / Skip connection
+            modality_embedding = projected + shared
+            print("MODALITY EMBEDDING: ", modality_embedding.shape)
+            modality_embeddings.append(modality_embedding)
+
+class Decoder(nn.Module):
+    def __init__(
+        self,
+        number_class,
+        modalities_num,
+        filter_num,
+        decoder_type
+    ):
+        super(Decoder, self).__init__()
 
         # Decoder
         if decoder_type == "fclayer":
@@ -288,6 +296,41 @@ class ShaSpec(nn.Module):
                 nn.ConvTranspose2d(filter_num, number_class, kernel_size=3, stride=2)
             )
 
+    def forward(self, concatenated_features):
+        # Decode the features based on the decoder type
+        if self.decoder_type == "fclayer":
+            output = self.decoder(concatenated_features.view(concatenated_features.size(0), -1))
+        elif self.decoder_type == "convtrans":
+            output = self.decoder(concatenated_features.view(concatenated_features.size(0), -1, 1, 1))
+        return output
+
+
+class ShaSpec(nn.Module):
+    def __init__(
+        self,
+        input,
+        number_class, 
+        modalities_num,
+        sa_div                         = 8,
+        filter_num                     = 64,        
+        filter_size                    = 5,
+        activation = "ReLU",
+        decoder_type = "fclayer", # or "convtrans"
+        weighted_sum = False # Variant of SharedEncoder
+    ):
+        super(ShaSpec, self).__init__()
+
+        self.weighted_sum = weighted_sum
+
+        # Individual specific encoders
+        self.specific_encoders = nn.ModuleList([SpecificEncoder(input, filter_num, filter_size, activation, sa_div) for _ in range(modalities_num)])
+
+        # One shared encoder for all modalities
+        self.shared_encoder = SharedEncoder(modalities_num, input, filter_num, filter_size, activation, sa_div)
+
+        self.residual_block = ResidualBlock(filter_num)
+
+        self.decoder = Decoder( number_class, modalities_num, filter_num, decoder_type)
 
     def forward(self, x_list):
         """
@@ -299,40 +342,21 @@ class ShaSpec(nn.Module):
         print("SPECIFIC FEATURES: ", specific_features)
 
         print("-"*16, "Shared Encoder", "-"*16)
-        shared_features = self.shared_encoder(torch.cat(x_list, dim=3))
+        # Depending on chosen SharedEncoder approach
+        if self.weighted_sum:
+            shared_features = [encoder(x) for encoder, x in zip(self.shared_features, x_list)]
+        else:
+            shared_features = self.shared_encoder(torch.cat(x_list, dim=3))
         print("SHARED FEATURES: ", shared_features)
         # Split the shared features for each modality
 
-        print("-"*16, "Putting things together", "-"*16)
-        # Concatenate and project features for each modality
-
-        # List of extracted features
-        modality_embeddings = []
-        for specific, shared in zip(specific_features, shared_features):
-            # Concatenate
-            concatenated = torch.cat((specific, shared), dim=2)
-            print("CONCATENATED: ", concatenated.shape)
-
-            # Linear projection
-            projected = self.fc_proj(concatenated)
-            print("PROJECTED: ", projected.shape)
-            print("-"*32)
-            print(projected.shape)
-            print(shared.shape)
-
-            # Residual block / Skip connection
-            modality_embedding = projected + shared
-            print("MODALITY EMBEDDING: ", modality_embedding.shape)
-            modality_embeddings.append(modality_embedding)
-        print(len(modality_embeddings))
+        modality_embeddings = self.residual_block(specific_features, shared_features)
 
         # Prepare features for decoder by concatenating them along the F dimension
         concatenated_features = torch.cat(modality_embeddings, dim=2)
-        print(concatenated_features.shape)
-        pass
-        # # Decode the features based on the decoder type
-        # if self.decoder_type == "convtrans":
-        #     output = self.decoder(concatenated_features.view(concatenated_features.size(0), -1, 1, 1))
-        # else: # Flat input type
-        #     output = self.decoder(concatenated_features.view(concatenated_features.size(0), -1))
-        # return output
+        print("Shape of concatenated features: ", concatenated_features.shape)
+
+        prediction = self.decoder(concatenated_features)
+
+        return prediction
+
