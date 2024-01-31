@@ -97,7 +97,9 @@ parser.add_argument('--cross-channel-aggregation-type', dest='cross_channel_aggr
 parser.add_argument('--temporal-info-interaction-type', dest='temporal_info_interaction_type', default= "lstm", type=str, help='Set the temporal_info_interaction_type type')
 parser.add_argument('--temporal-info-aggregation-type', dest='temporal_info_aggregation_type', default= "tnaive", type=str, help='Set the temporal_info_aggregation_type type')
 
-
+# ShaSpec-specific
+parser.add_argument('--decoder-type', dest='decoder_type', default= "FC", type=str, help='Set the decoder_type type for the ShaSpec model')
+parser.add_argument('--shared_encoder-type', dest='shared_encoder_type', default= "concatenated", type=str, help='Set the shared_encoder_type type for the ShaSpec model')
 
 args = parser.parse_args()
 

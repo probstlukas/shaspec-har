@@ -43,3 +43,7 @@ mcnn:
   batch_norm: 0
   filter_width: 5
   drop_prob: 0.25
+
+shaspec:
+  filter_num: 42
+  sa_div: 8
