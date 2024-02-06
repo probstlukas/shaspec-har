@@ -2,23 +2,10 @@ import torch # For all things PyTorch
 import torch.nn as nn # For torch.nn.Module, the parent object for PyTorch models
 from models.Attend import SelfAttention # For the self-attention mechanism
 
-class SpecificEncoder(nn.Module):
-    """
-    Specific Encoder to capture the unique characteristics of each modality.
-
-    Input: modality
-    Output: specific feature
-    """
-    def __init__(
-        self,
-        input_shape, # 
-        filter_num,
-        filter_size,
-        activation,
-        sa_div
-    ):
-        super(SpecificEncoder, self).__init__()
-
+class BaseEncoder(nn.Module):
+    def __init__(self, input_shape, filter_num, filter_size, activation, sa_div):
+        super(BaseEncoder, self).__init__()
+        
         """
         PART 1: Channel-wise Feature Extraction (Convolutional layers)
         
@@ -26,12 +13,16 @@ class SpecificEncoder(nn.Module):
         Output: batch_size, filter_num, downsampled_length, num_of_sensor_channels
         """
         # Halving the length with each convolutional layer
-        self.conv1 = nn.Conv2d(input_shape[1], filter_num, (filter_size, 1), stride=(2, 1))
-        self.conv2 = nn.Conv2d(filter_num, filter_num, (filter_size, 1), stride=(2, 1))
-        self.conv3 = nn.Conv2d(filter_num, filter_num, (filter_size, 1), stride=(2, 1))
-        self.conv4 = nn.Conv2d(filter_num, filter_num, (filter_size, 1), stride=(2, 1))
-        
-        self.activation = nn.ReLU() if activation == "ReLU" else nn.Tanh()
+        self.conv_layers = nn.Sequential(
+            nn.Conv2d(input_shape[1], filter_num, (filter_size, 1), stride=(2, 1)),
+            self.get_activation(activation),
+            nn.Conv2d(filter_num, filter_num, (filter_size, 1), stride=(2, 1)),
+            self.get_activation(activation),
+            nn.Conv2d(filter_num, filter_num, (filter_size, 1), stride=(2, 1)),
+            self.get_activation(activation),
+            nn.Conv2d(filter_num, filter_num, (filter_size, 1), stride=(2, 1)),
+            self.get_activation(activation)
+        )
 
         """
         PART 2: Cross-Channel Interaction (Self-Attention)
@@ -65,10 +56,7 @@ class SpecificEncoder(nn.Module):
         Finally, it reshapes and passes the output through a fully connected layer for sensor channel fusion.
         """
         # B x F x T x C 
-        x = self.activation(self.conv1(x))
-        x = self.activation(self.conv2(x))
-        x = self.activation(self.conv3(x))
-        x = self.activation(self.conv4(x))
+        x = self.conv_layers(x)
         # -----> B x F' x T* x C
 
         """ ================ Cross-Channel Interaction ================"""
@@ -98,7 +86,14 @@ class SpecificEncoder(nn.Module):
         x = self.fc_fusion(x)
         # -----> B x C x 2F'
         return x
-    
+
+    @staticmethod
+    def get_activation(activation_type):
+        if activation_type == "ReLU":
+            return nn.ReLU()
+        else:
+            return nn.Tanh()
+
     def get_downsampled_length(self, input_shape):
         """
         Compute the downsampled length after the convolutional layers.
@@ -116,129 +111,53 @@ class SpecificEncoder(nn.Module):
         return x.shape[2]
 
 
-class SharedEncoder(nn.Module):
+class SpecificEncoder(BaseEncoder):
+    """
+    Specific Encoder to capture the unique characteristics of each modality.
+
+    Input: modality
+    Output: specific feature
+    """
+    def __init__(self, input_shape, filter_num, filter_size, activation, sa_div):
+        # Call the constructor of BaseEncoder
+        super(SpecificEncoder, self).__init__(input_shape, filter_num, filter_size, activation, sa_div)
+
+    def forward(self, x):
+        # Call the forward method of BaseEncoder
+        x = super(SpecificEncoder, self).forward(x)
+        
+        return x
+
+
+class SharedEncoder(BaseEncoder):
     """
     Shared Encoder to to extract common features that are informative accross all sensor channels.
 
     Input: N modalities
     Output: N shared features as output
     """
-    def __init__(
-        self,
-        modalities_num,
-        input_shape,
-        filter_num,
-        filter_size,
-        activation,
-        sa_div,
-        shared_encoder_type
-    ):
-        super(SharedEncoder, self).__init__()
+    def __init__(self, modalities_num, input_shape, filter_num, filter_size, activation, sa_div, shared_encoder_type):
+        if shared_encoder_type == "concatenated":
+            # Concatenate modalities before initializing the base class
+            input_shape = (input_shape[0], input_shape[1], input_shape[2], input_shape[3] * modalities_num)
+            self.num_of_sensor_channels = input_shape[3]
+        
+        # Now that input_shape is correctly set, we can initialize the base class
+        super(SharedEncoder, self).__init__(input_shape, filter_num, filter_size, activation, sa_div)
 
         self.shared_encoder_type = shared_encoder_type
 
-        if shared_encoder_type == "":
-            self.modalities_num = modalities_num
-            self.num_of_sensor_channels = input_shape[3]
-
-            # Concatenate modalities
-            input_shape = (input_shape[0], input_shape[1], input_shape[2], input_shape[3] * modalities_num)
-            print("Sha Enc input shape: ", input_shape)
-
-        ### Part 1: Convolutional layers for local context extraction
-        # Halving the length by 2 with each convolutional layer (assuming height is the temporal dimension)
-        self.conv1 = nn.Conv2d(input_shape[1], filter_num, (filter_size, 1), stride=(2, 1))
-        self.conv2 = nn.Conv2d(filter_num, filter_num, (filter_size, 1), stride=(2, 1))
-        self.conv3 = nn.Conv2d(filter_num, filter_num, (filter_size, 1), stride=(2, 1))
-        self.conv4 = nn.Conv2d(filter_num, filter_num, (filter_size, 1), stride=(2, 1))
-        
-        self.activation = nn.ReLU() if activation == "ReLU" else nn.Tanh()
-
-        ### Part 2: Self-attention layer for inter-sensor channel communication
-        self.sa = SelfAttention(filter_num, sa_div)
-
-        ### Part 3: FC layer for sensor channel fusion
-        # Sequence length after applying conv layers
-        seq_length = self.get_shape_of_conv4(input_shape)[2]
-        # Output feature dimension
-        # Multiply To reduce feature space
-        feature_dim = 2 * filter_num
-        self.fc_fusion = nn.Linear(filter_num * seq_length, feature_dim)
-
     def forward(self, x):
-        # B F T C
-        print(x.shape)
-        ### Apply convolutional layers
-        x = self.activation(self.conv1(x))
-        print(x.shape)
-        x = self.activation(self.conv2(x))
-        print(x.shape)
-        x = self.activation(self.conv3(x))
-        print(x.shape)
-        x = self.activation(self.conv4(x))
-        print(x.shape)
-
-        ### Apply self-attention to each time step in the sequence
-        # For each time step 't' in the sequence:
-        # 1. Extract the slice of data corresponding to the time step.
-        # 2. Apply self-attention to this slice. The self-attention mechanism refines
-        #    the features by considering the interaction of this time step with all other time steps in the sequence.
-        # 3. Use torch.unsqueeze to ensure the slice has the correct dimensionality for self-attention.
-        # Finally, concatenate the refined time steps along the last dimension to reconstruct the sequence with enhanced features.
-        refined = torch.cat(
-            [self.sa(torch.unsqueeze(x[:, :, t, :], dim=3)) for t in range(x.shape[2])],
-            dim=-1,
-        )
-        
-        print("After refined:", refined.shape)
-
-        ### Reshaping and reordering the output for the FC layer
-        # Before: (batch_size, filter_num, sequence_length, num_of_sensor_channels).
-        # Swap filter_num with seq_length
-        x = refined.permute(0, 2, 1, 3)
-        # Feature vector für jeden sensor channel, nicht time step!
-        # Reshape the tensor to flatten/combine the last two dimensions
-        x = x.reshape(x.shape[0], x.shape[1], -1)
-        # batch_size, num_of_sensor_channels, temp_length * filter_num
-        # B C FT
-        # Reshape and apply the FC layer
-        x = self.fc_fusion(x)
+        # Call forward method of the base class
+        x = super(SharedEncoder, self).forward(x)
 
         if self.shared_encoder_type == "concatenated":
-            print("Before splitting: ", x.shape)
-            # Split the tensor back into N separate tensors along the second dimension C
-            # Each tensor in the list corresponds to one modality
+            # Split the tensor back into separate tensors for each modality
             split_tensors = torch.split(x, self.num_of_sensor_channels, dim=1)
-
-            for i, tensor in enumerate(split_tensors):
-                print(f"After splitting:{i} ", tensor.shape)
             return split_tensors
-
-        return x
-    
-    def get_shape_of_conv4(self, input_shape):
-        """
-        Compute the shape of the output after the fourth convolutional layer.
         
-        Args:
-        - input_shape (tuple): The shape of the input tensor.
-        - filter_num (int): Number of filters in the convolutional layers.
-        - filter_size (int): Size of the kernel in the convolutional layers.
-
-        Returns:
-        - tuple: The shape of the output after the fourth convolutional layer.
-        """
-        # Create a dummy input tensor based on the input shape
-        x = torch.randn(input_shape)
-
-        # Pass the dummy input through the convolutional layers
-        x = self.conv1(x)
-        x = self.conv2(x)
-        x = self.conv3(x)
-        x = self.conv4(x)
-
-        # Return the shape of the output
-        return x.shape
+        # If not concatenated, just return x
+        return x
 
 class ResidualBlock(nn.Module):
     def __init__(
@@ -281,6 +200,7 @@ class Decoder(nn.Module):
         super(Decoder, self).__init__()
 
         # Decoder
+        # TODO: Check input/output shape
         if decoder_type == "FC":
             self.decoder = nn.Linear(2 * filter_num * modalities_num, number_class)
         elif decoder_type == "ConvTrans":
@@ -306,7 +226,7 @@ class ShaSpec(nn.Module):
         number_class, 
         filter_num,
         sa_div,
-        modalities_num      = 6, # TODO: Parameterize?
+        modalities_num = 6,# TODO
         filter_size         = 5,
         activation          = "ReLU",
         decoder_type        = "FC", # FC ConvTrans
@@ -324,7 +244,7 @@ class ShaSpec(nn.Module):
 
         self.residual_block = ResidualBlock(filter_num)
 
-        self.decoder = Decoder( number_class, modalities_num, filter_num, decoder_type)
+        self.decoder = Decoder(number_class, modalities_num, filter_num, decoder_type)
 
     def forward(self, x_list):
         """
@@ -353,4 +273,3 @@ class ShaSpec(nn.Module):
         prediction = self.decoder(concatenated_features)
 
         return prediction
-
