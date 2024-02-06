@@ -46,4 +46,5 @@ mcnn:
 
 shaspec:
   filter_num: 42
+  filter_size: 5
   sa_div: 8
