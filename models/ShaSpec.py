@@ -12,7 +12,7 @@ class BaseEncoder(nn.Module):
         Input: batch_size, filter_num, temp_length, num_of_sensor_channels
         Output: batch_size, filter_num, downsampled_length, num_of_sensor_channels
         """
-        # Halving the length with each convolutional layer
+        # Halving the length with each convolutional layer in the sequential container
         self.conv_layers = nn.Sequential(
             nn.Conv2d(input_shape[1], filter_num, (filter_size, 1), stride=(2, 1)),
             self.get_activation(activation),
@@ -98,17 +98,13 @@ class BaseEncoder(nn.Module):
         """
         Compute the downsampled length after the convolutional layers.
         """
-        # Create a dummy input tensor based on the input shape
-        x = torch.randn(input_shape)
-
-        # Pass the dummy input through the convolutional layers
-        x = self.conv1(x)
-        x = self.conv2(x)
-        x = self.conv3(x)
-        x = self.conv4(x)
-
-        # Return temp_length, i.e. now downsampled_length
-        return x.shape[2]
+        # No need to track gradients here
+        with torch.no_grad():  
+            x = torch.randn(input_shape)
+            # Pass through all conv layers at once
+            x = self.conv_layers(x)  
+            # Return the temporal length after downsampling
+            return x.shape[2]  
 
 
 class SpecificEncoder(BaseEncoder):
@@ -137,10 +133,10 @@ class SharedEncoder(BaseEncoder):
     Output: N shared features as output
     """
     def __init__(self, modalities_num, input_shape, filter_num, filter_size, activation, sa_div, shared_encoder_type):
-        if shared_encoder_type == "concatenated":
-            # Concatenate modalities before initializing the base class
-            input_shape = (input_shape[0], input_shape[1], input_shape[2], input_shape[3] * modalities_num)
-            self.num_of_sensor_channels = input_shape[3]
+        # if shared_encoder_type == "concatenated":
+        #     # Concatenate modalities before initializing the base class
+        #     input_shape = (input_shape[0], input_shape[1], input_shape[2], input_shape[3] * modalities_num)
+        self.num_of_sensor_channels = input_shape[3]
         
         # Now that input_shape is correctly set, we can initialize the base class
         super(SharedEncoder, self).__init__(input_shape, filter_num, filter_size, activation, sa_div)
@@ -169,25 +165,23 @@ class ResidualBlock(nn.Module):
         # Linear projection
         self.fc_proj = nn.Linear(4 * filter_num, 2 * filter_num)
 
-    def forward(self, specific_features, shared_features):
-        # List of extracted features
-        modality_embeddings = []
-        for specific, shared in zip(specific_features, shared_features):
-            # Concatenate
-            concatenated = torch.cat((specific, shared), dim=2)
-            print("CONCATENATED: ", concatenated.shape)
+    def forward(self, specific_feature, shared_feature):
+        # Concatenate
+        concatenated = torch.cat((specific_feature, shared_feature), dim=2)
+        print("CONCATENATED: ", concatenated.shape)
 
-            # Linear projection for fusion
-            projected = self.fc_proj(concatenated)
-            print("PROJECTED: ", projected.shape)
-            print("-"*32)
-            print(projected.shape)
-            print(shared.shape)
+        # Linear projection for fusion
+        projected = self.fc_proj(concatenated)
+        print("PROJECTED: ", projected.shape)
+        print("-"*32)
+        print(projected.shape)
+        print(shared_feature.shape)
 
-            # Residual block / Skip connection
-            modality_embedding = projected + shared
-            print("MODALITY EMBEDDING: ", modality_embedding.shape)
-            modality_embeddings.append(modality_embedding)
+        # Residual block / Skip connection
+        modality_embedding = projected + shared_feature
+        print("MODALITY EMBEDDING: ", modality_embedding.shape)
+
+        return modality_embedding
 
 class Decoder(nn.Module):
     def __init__(
@@ -198,24 +192,21 @@ class Decoder(nn.Module):
         decoder_type
     ):
         super(Decoder, self).__init__()
-
+        self.decoder_type = decoder_type
         # Decoder
-        # TODO: Check input/output shape
         if decoder_type == "FC":
             self.decoder = nn.Linear(2 * filter_num * modalities_num, number_class)
         elif decoder_type == "ConvTrans":
-            self.decoder = nn.Sequential(
-                nn.ConvTranspose2d(2 * filter_num * modalities_num, filter_num, kernel_size=3, stride=2),
-                nn.ReLU(),
-                nn.ConvTranspose2d(filter_num, number_class, kernel_size=3, stride=2)
-            )
+            # TODO: Check input/output shape. ConvTranspose2d for upsampling and then Conv2d for downsampling to get the final output?
+            # self.decoder = nn.Sequential(
+            #     nn.ConvTranspose2d(2 * filter_num * modalities_num, filter_num, kernel_size=3, stride=2),
+            #     nn.ReLU(),
+            #     nn.ConvTranspose2d(filter_num, number_class, kernel_size=3, stride=2)
+            # )
+            pass
 
     def forward(self, concatenated_features):
-        # Decode the features based on the decoder type
-        if self.decoder_type == "FC":
-            output = self.decoder(concatenated_features.view(concatenated_features.size(0), -1))
-        elif self.decoder_type == "ConvTrans":
-            output = self.decoder(concatenated_features.view(concatenated_features.size(0), -1, 1, 1))
+        output = self.decoder(concatenated_features)
         return output
 
 
@@ -223,12 +214,12 @@ class ShaSpec(nn.Module):
     def __init__(
         self,
         input,
-        number_class, 
+        modalities_num,
+        classes_num,
         filter_num,
+        filter_size,
         sa_div,
-        modalities_num = 6,# TODO
-        filter_size         = 5,
-        activation          = "ReLU",
+        activation          = "ReLU", # ReLU Tanh
         decoder_type        = "FC", # FC ConvTrans
         shared_encoder_type = "concatenated" # concatenated weighted
     ):
@@ -244,7 +235,7 @@ class ShaSpec(nn.Module):
 
         self.residual_block = ResidualBlock(filter_num)
 
-        self.decoder = Decoder(number_class, modalities_num, filter_num, decoder_type)
+        self.decoder = Decoder(classes_num, modalities_num, filter_num, decoder_type)
 
     def forward(self, x_list):
         """
@@ -253,23 +244,49 @@ class ShaSpec(nn.Module):
         print("-"*16, "Specific Encoder", "-"*16)
         # List of all specific features
         specific_features = [encoder(x) for encoder, x in zip(self.specific_encoders, x_list)]
+        for feature in specific_features:
+            print("SPECIFIC FEATURE SHAPE: ", feature.shape)
         print("SPECIFIC FEATURES: ", specific_features)
+        print("SPECIFIC FEATURES LENGTH: ", len(specific_features))
 
         print("-"*16, "Shared Encoder", "-"*16)
-        # Depending on chosen SharedEncoder approach
+        # Process inputs through the shared encoder based on the chosen type
         if self.shared_encoder_type == "concatenated":
-            shared_features = [encoder(x) for encoder, x in zip(self.shared_features, x_list)]
-        else:
-            shared_features = self.shared_encoder(torch.cat(x_list, dim=3))
-        print("SHARED FEATURES: ", shared_features)
-        # Split the shared features for each modality
+            # Concatenate the modalities for shared processing
+            concatenated_inputs = torch.cat(x_list, dim=3)  # Adjust dim according to how you concatenate
+            shared_features = self.shared_encoder(concatenated_inputs)
+        elif self.shared_encoder_type == "weighted":
+            # TODO: Is this correct? How to handle weighted sum and how to define self.weights?
+            # # Initialize an empty tensor for accumulating weighted features
+            # weighted_sum = None
+            # # Assuming weights are predefined or learned parameters stored in self.weights
+            # for i, x in enumerate(x_list):
+            #     # Process each modality through the shared encoder
+            #     shared_feature = self.shared_encoder(x.unsqueeze(0))  # Assuming shared encoder expects batch dimension
+            #     if weighted_sum is None:
+            #         weighted_sum = self.weights[i] * shared_feature
+            #     else:
+            #         weighted_sum += self.weights[i] * shared_feature
+            # shared_features = [weighted_sum] * len(x_list)  # Replicate the weighted sum for each modality
+            pass
 
-        modality_embeddings = self.residual_block(specific_features, shared_features)
+        for feature in shared_features:
+            print("SHARED FEATURE SHAPE: ", feature.shape)
+        print("SHARED FEATURES LENGTH: ", len(shared_features))
+
+        modality_embeddings = []
+        for specific, shared in zip(specific_features, shared_features):
+            # Process each pair through the residual block
+            fused_feature = self.residual_block(specific, shared)
+            modality_embeddings.append(fused_feature)
+        print("MODALITY EMBEDDINGS: ", modality_embeddings)
 
         # Prepare features for decoder by concatenating them along the F dimension
         concatenated_features = torch.cat(modality_embeddings, dim=2)
         print("Shape of concatenated features: ", concatenated_features.shape)
 
         prediction = self.decoder(concatenated_features)
+
+        print("Prediction shape: ", prediction.shape)
 
         return prediction
