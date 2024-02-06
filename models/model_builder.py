@@ -159,9 +159,12 @@ class model_builder(nn.Module):
             config_file = open('configs/model.yaml', mode='r')
             config = yaml.load(config_file, Loader=yaml.FullLoader)["shaspec"]
             self.model  = ShaSpec((1, f_in, self.args.input_length, self.args.c_in),
-                                  self.args.num_classes,
+                                  self.args.modalities_num,
+                                  self.args.classes_num,
                                   filter_num = config["filter_num"],
+                                  filter_size = config["filter_size"],
                                   sa_div = config["sa_div"],
+                                  activation=self.args.activation,
                                   decoder_type = self.args.decoder_type, # FC ConvTrans
                                   shared_encoder_type = self.args.shared_encoder_type # concatenated weighted
                                   )
