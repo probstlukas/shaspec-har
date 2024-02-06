@@ -183,6 +183,34 @@ class ResidualBlock(nn.Module):
 
         return modality_embedding
 
+
+class MissingModalityFeatureGeneration(nn.Module):
+    """
+    Generate features for missing modalities by averaging existing shared features.
+    """
+    def __init__(self):
+        super(MissingModalityFeatureGeneration, self).__init__()
+
+    def forward(self, shared_features):
+        """
+        Args:
+            shared_features (list): List of shared features for each modality, can contain None for missing modalities.
+        Returns:
+            list: List of shared features with generated features replacing None for missing modalities.
+        """
+
+        # Filter out None values and stack existing shared features for averaging
+        valid_features = torch.stack([feature for feature in shared_features if feature is not None], dim=0)
+        
+        # Calculate the mean along the stack dimension (0) to get the average feature
+        average_feature = torch.mean(valid_features, dim=0, keepdim=True)
+        
+        # Replace None in shared_features with the average feature
+        generated_features = [feature if feature is not None else average_feature for feature in shared_features]
+        
+        return generated_features
+
+
 class Decoder(nn.Module):
     def __init__(
         self,
@@ -235,6 +263,8 @@ class ShaSpec(nn.Module):
 
         self.residual_block = ResidualBlock(filter_num)
 
+        self.missing_modality_feature_generation = MissingModalityFeatureGeneration()
+
         self.decoder = Decoder(classes_num, modalities_num, filter_num, decoder_type)
 
     def forward(self, x_list):
@@ -274,15 +304,21 @@ class ShaSpec(nn.Module):
             print("SHARED FEATURE SHAPE: ", feature.shape)
         print("SHARED FEATURES LENGTH: ", len(shared_features))
 
-        modality_embeddings = []
+        # Generate features for missing modalities
+        shared_features = self.missing_modality_feature_generation(shared_features)
+
+        # TODO: Mark missing shared and specific features with None, fuse them and then generate missing fused features with feature generation
+        # TODO: How to pass modalities? in ShaSpec? Indices for missing modalities or list of data, ...?
+
+        fused_features = []
         for specific, shared in zip(specific_features, shared_features):
             # Process each pair through the residual block
             fused_feature = self.residual_block(specific, shared)
-            modality_embeddings.append(fused_feature)
-        print("MODALITY EMBEDDINGS: ", modality_embeddings)
+            fused_features.append(fused_feature)
+        print("MODALITY EMBEDDINGS: ", fused_features)
 
         # Prepare features for decoder by concatenating them along the F dimension
-        concatenated_features = torch.cat(modality_embeddings, dim=2)
+        concatenated_features = torch.cat(fused_features, dim=2)
         print("Shape of concatenated features: ", concatenated_features.shape)
 
         prediction = self.decoder(concatenated_features)
