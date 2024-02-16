@@ -174,10 +174,9 @@ class model_builder(nn.Module):
             print("Build the None model!")
 
 
-    def forward(self,x):
+    def forward(self, x):
         #if self.first_conv ：
         #    x = self.pre_conv(x)
-
         if self.args.wavelet_filtering:
             x = self.wave_conv(x)
             if self.args.wavelet_filtering_regularization:

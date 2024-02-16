@@ -152,7 +152,7 @@ class data_set(Dataset):
             print("The number of classes is : ", self.nb_classes)
             print("The input_length  is : ", self.input_length)
             print("The channel_in is : ", self.channel_in)
-
+            
 
     def __getitem__(self, index):
         #print(index)
