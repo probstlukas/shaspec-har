@@ -45,6 +45,6 @@ mcnn:
   drop_prob: 0.25
 
 shaspec:
-  filter_num: 42
+  filter_num: 16
   filter_size: 5
   sa_div: 8

@@ -159,7 +159,7 @@ class model_builder(nn.Module):
             config_file = open('configs/model.yaml', mode='r')
             config = yaml.load(config_file, Loader=yaml.FullLoader)["shaspec"]
             self.model  = ShaSpec((1, f_in, self.args.input_length, self.args.c_in),
-                                  self.args.modalities_num,
+                                  self.args.num_modalities,
                                   self.args.classes_num,
                                   filter_num = config["filter_num"],
                                   filter_size = config["filter_size"],

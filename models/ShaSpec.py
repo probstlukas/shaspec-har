@@ -135,11 +135,11 @@ class SharedEncoder(BaseEncoder):
     Input: N modalities
     Output: N shared features as output
     """
-    def __init__(self, modalities_num, input_shape, filter_num, filter_size, activation, sa_div, shared_encoder_type):
-        self.modalities_num = modalities_num
+    def __init__(self, num_modalities, input_shape, filter_num, filter_size, activation, sa_div, shared_encoder_type):
+        self.num_modalities = num_modalities
         if shared_encoder_type == "concatenated":
             # Concatenate modalities before initializing the base class
-            input_shape = (input_shape[0], input_shape[1], input_shape[2], input_shape[3] * modalities_num)
+            input_shape = (input_shape[0], input_shape[1], input_shape[2], input_shape[3] * num_modalities)
         self.num_of_sensor_channels = input_shape[3]
         
         # Now that input_shape is correctly set, we can initialize the base class
@@ -152,7 +152,7 @@ class SharedEncoder(BaseEncoder):
         x = super(SharedEncoder, self).forward(x)
 
         if self.shared_encoder_type == "concatenated":
-            split_tensors = torch.tensor_split(x, self.modalities_num, dim=1)
+            split_tensors = torch.tensor_split(x, self.num_modalities, dim=1)
             return split_tensors
                 
         # If not concatenated, just return x
@@ -219,7 +219,7 @@ class Decoder(nn.Module):
         self,
         number_class,
         num_of_sensor_channels,
-        modalities_num,
+        num_modalities,
         filter_num,
         decoder_type
     ):
@@ -233,14 +233,14 @@ class Decoder(nn.Module):
             # C x 2F' = 42 * 5 * 2 = 420
             # print("Filter num: ", filter_num)
             # print("Num of sensor channels: ", num_of_sensor_channels)
-            # print("modalities num: ", modalities_num)
-            self.fc_layer = nn.Linear(2 * filter_num * num_of_sensor_channels * modalities_num, number_class)
+            # print("modalities num: ", num_modalities)
+            self.fc_layer = nn.Linear(2 * filter_num * num_of_sensor_channels * num_modalities, number_class)
             
         #elif decoder_type == "ConvTrans":
             # @TODO: Ask Yexu what his idea was for this decoder
             # Check input/output shape. ConvTranspose2d for upsampling and then Conv2d for downsampling to get the final output?
             # self.decoder = nn.Sequential(
-            #     nn.ConvTranspose2d(2 * filter_num * modalities_num, filter_num, kernel_size=3, stride=2),
+            #     nn.ConvTranspose2d(2 * filter_num * num_modalities, filter_num, kernel_size=3, stride=2),
             #     nn.ReLU(),
             #     nn.ConvTranspose2d(filter_num, number_class, kernel_size=3, stride=2)
             # )
@@ -258,8 +258,7 @@ class ShaSpec(nn.Module):
     def __init__(
         self,
         input,
-        modalities_num,
-        # list with tensors, pos1: pytorch array, pos2: pytorch NaN tensor, ...
+        num_modalities,
         classes_num,
         filter_num,
         filter_size,
@@ -274,16 +273,16 @@ class ShaSpec(nn.Module):
         self.shared_encoder_type = shared_encoder_type
 
         # Individual specific encoders
-        self.specific_encoders = nn.ModuleList([SpecificEncoder(input, filter_num, filter_size, activation, sa_div) for _ in range(modalities_num)])
+        self.specific_encoders = nn.ModuleList([SpecificEncoder(input, filter_num, filter_size, activation, sa_div) for _ in range(num_modalities)])
 
         # One shared encoder for all modalities
-        self.shared_encoder = SharedEncoder(modalities_num, input, filter_num, filter_size, activation, sa_div, shared_encoder_type)
+        self.shared_encoder = SharedEncoder(num_modalities, input, filter_num, filter_size, activation, sa_div, shared_encoder_type)
 
         self.residual_block = ResidualBlock(filter_num)
 
         self.missing_modality_feature_generation = MissingModalityFeatureGeneration()
 
-        self.decoder = Decoder(classes_num, self.num_of_sensor_channels, modalities_num, filter_num, decoder_type)
+        self.decoder = Decoder(classes_num, self.num_of_sensor_channels, num_modalities, filter_num, decoder_type)
 
     def forward(self, x_list):
         """
