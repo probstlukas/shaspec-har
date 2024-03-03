@@ -24,6 +24,7 @@ import random
 import os
 
 from tqdm import tqdm
+import json
 
 class MixUpLoss(nn.Module):
     """
@@ -106,52 +107,70 @@ class Exp(object):
         return criterion
 
     # 
-    def _get_data(self, data, flag="train", weighted_sampler = False, miss_rate=0.0):
+    def _get_data(self, data, flag="train", weighted_sampler = False):
+        """
+        Get the data loader
+
+        Returns:
+        - batch_x: list of tensors, each tensor is a batch of data for a modality
+        - batch_y: tensor, batch of labels
+        - omitted_modality_indices: list of indices of omitted modalities
+        """
         if flag == 'train':
             shuffle_flag = True 
         else:
             shuffle_flag = False
 
-        data  = data_set(self.args,data, flag, miss_rate=miss_rate)
-        # data_new = []
-        # for d in tqdm(data):
-        #     print(d[0].shape)
-        #     print(d[0].dtype)
-        #     data_new.append(d)
+        data  = data_set(self.args,data, flag)
 
-        if flag == "train":
-            if self.args.mixup_probability < 1 or self.args.random_augmentation_prob<1:
-                random_aug =RandomAugment(self.args.random_augmentation_nr, self.args.random_augmentation_config, self.args.max_aug )
-                def collate_fn(batch):
-                    batch_x1 = []
-                    batch_x2 = []
-                    batch_y  = []
-                    
-                    for x,y,z in batch:
+        # if flag == "train":
+        def collate_fn(batch):
+            """
+            
+            """
+            
+            num_modalities = self.args.num_modalities
+            miss_rate = self.args.miss_rate
+            shapes = [arr[0].shape for arr in batch]
+            print(shapes)
 
-                        if np.random.uniform(0,1,1)[0]>=self.args.random_augmentation_prob:
-                            batch_x1.append(random_aug(x))
-                        else:
-                            batch_x1.append(x)
-                        batch_x2.append(y)
-                        batch_y.append(z)
+            # Calculate the number of modalities to omit
+            modalities_to_omit = int(miss_rate * num_modalities)
 
-                    batch_x1 = torch.tensor(np.concatenate(batch_x1, axis=0))
-                    batch_x2 = torch.tensor(batch_x2)
-                    batch_y = torch.tensor(batch_y)
-                    
-                    if np.random.uniform(0,1,1)[0] >= self.args.mixup_probability:
+            batch_x = []
+            batch_y  = []
+            omitted_modality_indices = np.random.choice(num_modalities, modalities_to_omit, replace=False)
+            print(omitted_modality_indices)
 
-                        batch_x1 , batch_y = mixup_data(batch_x1 , batch_y,   self.args.mixup_alpha,  argmax = self.args.mixup_argmax)
-                        #print("Mixup",batch_x1.shape,batch_y.shape)
-                    #else:
-                        #print(batch_x1.shape,batch_y.shape)
-                    batch_x1 = torch.unsqueeze(batch_x1,1)
-                    return batch_x1,batch_x2,batch_y
-            else:
-                collate_fn = None
-        else:
-            collate_fn = None
+            # Collect batch
+            for x, _, z in batch:
+                batch_x.append(x)
+                batch_y.append(z)
+
+            batch_x = torch.tensor(np.concatenate(batch_x, axis=0))
+            batch_y = torch.tensor(batch_y)
+            
+            # if np.random.uniform(0,1,1)[0] >= self.args.mixup_probability:
+
+            #     batch_x , batch_y = mixup_data(batch_x , batch_y,   self.args.mixup_alpha,  argmax = self.args.mixup_argmax)
+                #print("Mixup",batch_x1.shape,batch_y.shape)
+            #else:
+                #print(batch_x1.shape,batch_y.shape)
+            batch_x = torch.unsqueeze(batch_x,1)
+
+            batch_x = list(torch.tensor_split(batch_x, self.args.num_modalities, dim=3))
+            print(batch_x[0].shape)
+            print(len(batch_x))
+
+            # Setting the omitted modalities to NaN (or zero)
+            for index in omitted_modality_indices:
+                # Ensure the tensor at the omitted modality index is filled with NaN
+                batch_x[index] = torch.full_like(batch_x[index], float('nan'))
+                print("Missing modality: ", batch_x[index])
+
+            return batch_x, batch_y, omitted_modality_indices
+        # else:
+        #     collate_fn = None
 
         if weighted_sampler and flag == 'train':
 
@@ -173,25 +192,29 @@ class Exp(object):
                                      num_workers  =  0,
                                      drop_last    =  False,
                                      collate_fn   = collate_fn)
+
         return data_loader
 
 
     def get_setting_name(self):
         if self.args.model_type in ["deepconvlstm", "deepconvlstm_attn", "mcnn", "attend", "sahar", "tinyhar", "shaspec"]:
-            setting = "model_{}_data_{}_seed_{}_differencing_{}_Seperation_{}_magnitude_{}_Mixup_{}_RandomAug_{}_Scaling_{}_Mixupargmax_{}".format(self.args.model_type,
-                                                                                                                         self.args.data_name,
-                                                                                                                         self.args.seed,
-                                                                                                                         self.args.difference,
-                                                                                                                         self.args.filtering,
-                                                                                                                         self.args.magnitude,
-
+            setting = "model_{}_data_{}_seed_{}_differencing_{}_Seperation_{}_magnitude_{}_Mixup_{}_RandomAug_{}_Scaling_{}_Mixupargmax_{}_MissRate_{}".format(
+                                                                                                                        self.args.model_type,
+                                                                                                                        self.args.data_name,
+                                                                                                                        self.args.seed,
+                                                                                                                        self.args.difference,
+                                                                                                                        self.args.filtering,
+                                                                                                                        self.args.magnitude,
+                                                                                                                         self.args.mixup_probability,
                                                                                                                          self.args.mixup_probability,
 
-                                                                                                                         self.args.random_augmentation_prob,
-                                                                                                                                    self.args.filter_scaling_factor,
-                                                                                                                                                   self.args.mixup_argmax
+                                                                                                                        self.args.mixup_probability,
 
-                                                                                                                         )
+                                                                                                                        self.args.random_augmentation_prob,
+                                                                                                                        self.args.filter_scaling_factor,
+                                                                                                                        self.args.mixup_argmax,
+                                                                                                                        self.args.miss_rate,
+                                                                                                                        )
             return setting
         else:
             raise NotImplementedError
@@ -287,135 +310,271 @@ class Exp(object):
 
 
     def train(self):
-        miss_rates = self.args.miss_rates
-        miss_rates = [0.2]
-        for miss_rate in miss_rates:
-            setting = self.get_setting_name() + f"_miss_rate_{miss_rate}"
+        setting = self.get_setting_name()
 
-            path = os.path.join(self.args.to_save_path,'logs/'+setting)
-            self.path = path
-            if not os.path.exists(path):
-                os.makedirs(path)
+        path = os.path.join(self.args.to_save_path,'logs/'+setting)
+        self.path = path
+        if not os.path.exists(path):
+            os.makedirs(path)
 
-            score_log_file_name = os.path.join(self.path, "score.txt")
+        score_log_file_name = os.path.join(self.path, "score.txt")
+        config_file_name = os.path.join(self.path, "config.json")
 
+        config_dict = {
+            'model_type': self.args.model_type,
+            'data_name': self.args.data_name,
+            'seed': self.args.seed,
+            'batch_size': self.args.batch_size,
+            'shuffle': self.args.shuffle,
+            'drop_last': self.args.drop_last,
+            'train_vali_quote': self.args.train_vali_quote,
+            'train_epochs': self.args.train_epochs,
+            'learning_rate': self.args.learning_rate,
+            'learning_rate_patience': self.args.learning_rate_patience,
+            'learning_rate_factor': self.args.learning_rate_factor,
+            'early_stop_patience': self.args.early_stop_patience,
+            'use_gpu': self.args.use_gpu,
+            'gpu': self.args.gpu,
+            'use_multi_gpu': self.args.use_multi_gpu,
+            'optimizer': self.args.optimizer,
+            'criterion': self.args.criterion,
+            'activation': self.args.activation,
+            'decoder': self.args.decoder_type,
+            'shared_encoder_type': self.args.shared_encoder_type,
+            'sampling_freq': self.args.sampling_freq,
+            'classes_num': self.args.classes_num,
+            'num_modalities': self.args.num_modalities,
+            'dataset miss_rates': self.args.miss_rates,
+            'selected miss_rate': self.args.miss_rate,
+            'windowsize': self.args.windowsize,
+            'input_length': self.args.input_length,
+            'c_in': self.args.c_in,
+            'f_in': self.args.f_in,
+        }
+
+        torch.manual_seed(self.args.seed)
+        torch.cuda.manual_seed(self.args.seed)
+        torch.cuda.manual_seed_all(self.args.seed)
+        torch.backends.cudnn.deterministic = True 
+        random.seed(self.args.seed)
+        np.random.seed(self.args.seed)
+
+        # Load the data
+        dataset = data_dict[self.args.data_name](self.args)
+
+        print("=" * 16, " {dataset.exp_mode} Mode ", "=" * 16)
+        print("=" * 16, " {dataset.num_of_cv} CV folds in total ", "=" * 16)
+
+        num_of_cv = dataset.num_of_cv
+
+        # Write the configuration settings to a file
+        with open(config_file_name, 'w') as config_file:
+            json.dump(config_dict, config_file, indent=4)
+
+        for iter in range(num_of_cv):
             torch.manual_seed(self.args.seed)
             torch.cuda.manual_seed(self.args.seed)
             torch.cuda.manual_seed_all(self.args.seed)
             torch.backends.cudnn.deterministic = True 
             random.seed(self.args.seed)
             np.random.seed(self.args.seed)
+            g = torch.Generator()
+            g.manual_seed(self.args.seed)                  
+            torch.backends.cudnn.benchmark = False
+            os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
+            os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":16:8"
 
-            # load the data
-            dataset = data_dict[self.args.data_name](self.args)
-
-            print("================ {} Mode ====================".format(dataset.exp_mode))
-            print("================ {} CV folds in total ======================".format(dataset.num_of_cv))
-
-
-            num_of_cv = dataset.num_of_cv
-
-
-            for iter in range(num_of_cv):
-
-                torch.manual_seed(self.args.seed)
-                torch.cuda.manual_seed(self.args.seed)
-                torch.cuda.manual_seed_all(self.args.seed)
-                torch.backends.cudnn.deterministic = True 
-                random.seed(self.args.seed)
-                np.random.seed(self.args.seed)
-                g = torch.Generator()
-                g.manual_seed(self.args.seed)                  
-                torch.backends.cudnn.benchmark = False
-                os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
-                os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":16:8"
+            print(f"================ CV {iter} ================")
     
+            dataset.update_train_val_test_keys()
 
-                print(f"================ CV {iter} for miss rate {miss_rate} ================")
-        
-                dataset.update_train_val_test_keys()
+            cv_path = os.path.join(self.path, f"cv_{iter}")
 
-                cv_path = os.path.join(self.path, f"cv_{iter}_miss_rate_{miss_rate}")
-                # get the loader of train val test
+            # Get the loader of train val test
+            train_loader = self._get_data(dataset, flag = 'train', weighted_sampler = self.args.weighted_sampler)
+            val_loader = self._get_data(dataset, flag = 'vali', weighted_sampler = self.args.weighted_sampler)
+            test_loader   = self._get_data(dataset, flag = 'test', weighted_sampler = self.args.weighted_sampler)
+            #class_weights=torch.tensor(dataset.act_weights,dtype=torch.double).to(self.device)
+            train_steps = len(train_loader)
 
-                train_loader = self._get_data(dataset, flag = 'train', weighted_sampler = self.args.weighted_sampler, miss_rate=miss_rate)
-                val_loader = self._get_data(dataset, flag = 'vali', weighted_sampler = self.args.weighted_sampler, miss_rate=miss_rate)
-                test_loader   = self._get_data(dataset, flag = 'test', weighted_sampler = self.args.weighted_sampler, miss_rate=miss_rate)
-                #class_weights=torch.tensor(dataset.act_weights,dtype=torch.double).to(self.device)
-                train_steps = len(train_loader)
-
-                if not os.path.exists(cv_path):
-                    os.makedirs(cv_path)
+            if not os.path.exists(cv_path):
+                os.makedirs(cv_path)
+                skip_train = False
+                skip_finetuning = False
+            else:
+                file_in_folder = os.listdir(cv_path)
+                if 'final_best_vali.pth' in file_in_folder:
+                    skip_train = True
+                else:
                     skip_train = False
+
+                if 'final_finetuned_best_vali.pth' in file_in_folder:
+                    skip_finetuning = True
+                else:
                     skip_finetuning = False
-                else:
-                    file_in_folder = os.listdir(cv_path)
-                    if 'final_best_vali.pth' in file_in_folder:
-                        skip_train = True
-                    else:
-                        skip_train = False
 
-                    if 'final_finetuned_best_vali.pth' in file_in_folder:
-                        skip_finetuning = True
-                    else:
-                        skip_finetuning = False
+            epoch_log_file_name = os.path.join(cv_path, "epoch_log.txt")
 
-                print("SKIP FINE TUNING? ", skip_finetuning)
-                epoch_log_file_name = os.path.join(cv_path, "epoch_log.txt")
+            if skip_train:
+                print(f"=" * 16, " Skip the {iter} CV experiment ", "=" * 16)
+            else:
 
-                if skip_train:
-                    print("================Skip the {} CV Experiment================".format(iter))
-                else:
+                if os.path.exists(epoch_log_file_name):
+                    os.remove(epoch_log_file_name)
 
-                    if os.path.exists(epoch_log_file_name):
-                        os.remove(epoch_log_file_name)
+                epoch_log = open(epoch_log_file_name, "a")
+                score_log = open(score_log_file_name, "a")
 
-                    epoch_log = open(epoch_log_file_name, "a")
-                    score_log = open(score_log_file_name, "a")
-
-                    print("================ Build the model ================ ")	
-            
-                    self.model  = self.build_model().to(self.device)
-
-                    early_stopping        = EarlyStopping(patience=self.args.early_stop_patience, verbose=True)
-                    learning_rate_adapter = adjust_learning_rate_class(self.args,True)
-                    model_optim = self._select_optimizer()
-
-                    #if self.args.weighted == True:
-                    #    criterion =  nn.CrossEntropyLoss(reduction="mean",weight=class_weights).to(self.device)#self._select_criterion()
-                    #else:
-                    #    criterion =  nn.CrossEntropyLoss(reduction="mean").to(self.device)#self._select_criterion()
-                    criterion =  nn.CrossEntropyLoss(reduction="mean").to(self.device)
-                    criterion = MixUpLoss(criterion)
-
-                    print("-----------------")
-                    #for epoch in range(self.args.train_epochs):
-                    for epoch in tqdm(range(self.args.train_epochs), desc='Training Process [epochs]'):
-                        train_loss = []
-                        self.model.train()
-                        epoch_time = time.time()
-                        
-                        pbar = tqdm(train_loader, desc=f'Epoch {epoch+1}/{self.args.train_epochs}', leave=True)
-                        for (batch_x1,_,batch_y) in train_loader:                        
-                            batch_x1 = batch_x1.double().to(self.device)
-                            
-                            # ShaSpec model takes modalities as input
-                            if self.args.model_type == "shaspec":
-                                batch_x1 = self.split_data_into_modalities(batch_x1)
-
-                            batch_y = batch_y.long().to(self.device)
-                           
-                            outputs = self.model(batch_x1)
-                            
-                            loss = criterion(outputs, batch_y)
+                print(f"================ Build the {self.args.model_type} model ================ ")	
         
-                            if self.args.wavelet_filtering and self.args.wavelet_filtering_regularization:
-                                reg_loss = 0
-                                for name,parameter in self.model.named_parameters():
-                                    if "gamma" in name:
-                                        reg_loss += torch.sum(torch.abs(parameter))
+                self.model  = self.build_model().to(self.device)
 
-                                loss = loss + self.args.regulatization_tradeoff*reg_loss
+                early_stopping        = EarlyStopping(patience=self.args.early_stop_patience, verbose=True)
+                learning_rate_adapter = adjust_learning_rate_class(self.args,True)
+                model_optim = self._select_optimizer()
+
+                #if self.args.weighted == True:
+                #    criterion =  nn.CrossEntropyLoss(reduction="mean",weight=class_weights).to(self.device)#self._select_criterion()
+                #else:
+                #    criterion =  nn.CrossEntropyLoss(reduction="mean").to(self.device)#self._select_criterion()
+                criterion =  nn.CrossEntropyLoss(reduction="mean").to(self.device)
+                criterion = MixUpLoss(criterion)
+
+                for epoch in tqdm(range(self.args.train_epochs), desc='Training Process [epochs]'):
+                    train_loss = []
+                    self.model.train()
+                    epoch_time = time.time()
+                    
+                    pbar = tqdm(train_loader, desc=f'Epoch {epoch+1}/{self.args.train_epochs}', leave=True)
+                    for (batch_x,batch_y,missing_indices) in train_loader:                        
+                        # TODO: Google it more
+                        # Ensure models and variables are on the same device
+                        batch_x = [x.double().to(self.device) for x in batch_x]
+
+                        batch_y = batch_y.long().to(self.device)
+                        
+                        outputs = self.model(batch_x, missing_indices)
+                        
+                        loss = criterion(outputs, batch_y)
+    
+                        if self.args.wavelet_filtering and self.args.wavelet_filtering_regularization:
+                            reg_loss = 0
+                            for name,parameter in self.model.named_parameters():
+                                if "gamma" in name:
+                                    reg_loss += torch.sum(torch.abs(parameter))
+
+                            loss = loss + self.args.regulatization_tradeoff*reg_loss
+
+                        train_loss.append(loss.item())
+
+                        model_optim.zero_grad()
+                        loss.backward()
+                        model_optim.step()
+
+                        # Update progress bar description with current loss
+                        pbar.set_description(f'Epoch {epoch+1}/{self.args.train_epochs}, Loss: {loss.item():.4f}')
+                    pbar.close()
+
+                    print("Epoch: {} cost time: {}".format(epoch+1, time.time()-epoch_time))
+                    epoch_log.write("Epoch: {} cost time: {}".format(epoch+1, time.time()-epoch_time))
+                    epoch_log.write("\n")
+
+                    train_loss = np.average(train_loss)
+                    vali_loss , vali_acc, vali_f_w,  vali_f_macro,  vali_f_micro = self.validation(self.model, val_loader, criterion)
+
+                    print("VALI: Epoch: {0}, Steps: {1} | Train Loss: {2:.7f}  Vali Loss: {3:.7f} Vali Accuracy: {4:.7f}  Vali weighted F1: {5:.7f}  Vali macro F1 {6:.7f} ".format(
+                        epoch + 1, train_steps, train_loss, vali_loss, vali_acc, vali_f_w, vali_f_macro))
+
+                    epoch_log.write("VALI: Epoch: {0}, Steps: {1} | Train Loss: {2:.7f}  Vali Loss: {3:.7f} Vali Accuracy: {4:.7f}  Vali weighted F1: {5:.7f}  Vali macro F1 {6:.7f} \n".format(
+                        epoch + 1, train_steps, train_loss, vali_loss, vali_acc, vali_f_w, vali_f_macro))
+
+                    early_stopping(vali_loss, self.model, cv_path, vali_f_macro, vali_f_w, epoch_log)
+                    if early_stopping.early_stop:
+                        print("Early stopping")
+                        break
+                    epoch_log.write("----------------------------------------------------------------------------------------\n")
+                    epoch_log.flush()
+                    learning_rate_adapter(model_optim,vali_loss)
+            
+                # Rename the best_vali to final_best_vali
+                os.rename(cv_path+'/'+'best_vali.pth', cv_path+'/'+'final_best_vali.pth')
+
+                print("Loading the best validation model!")
+                self.model.load_state_dict(torch.load(cv_path+'/'+'final_best_vali.pth'))
+                #model.eval()
+                test_loss , test_acc, test_f_w,  test_f_macro,  test_f_micro = self.validation(self.model, test_loader, criterion, iter+1)
+                print("Final Test Performance : Test Accuracy: {0:.7f}  Test weighted F1: {1:.7f}  Test macro F1 {2:.7f} ".format (test_acc, test_f_w, test_f_macro))
+                epoch_log.write("Final Test Performance : Test weighted F1: {0:.7f}  Test macro F1 {1:.7f}\n\n\n\n\n\n\n\n".format(test_f_w, test_f_macro))
+                epoch_log.flush()
+
+                score_log.write("Test weighted F1: {0:.7f}  Test macro F1 {1:.7f}\n".format(test_f_w, test_f_macro))
+                score_log.flush()
+
+                epoch_log.close()
+                score_log.close()
+
+            # ------------------------------ code for  regularization and fine tuning -----------------------------------------------------------------
+
+            if self.args.wavelet_filtering_finetuning:
+                finetuned_score_log_file_name = os.path.join(self.path, "finetuned_score.txt")
+                if skip_finetuning:
+                    print("=" * 16, " Skip the {iter} CV Experiment Fine Tuning ", "=" * 16)
+                else:
+                    # thre_index : selected number
+                    epoch_log = open(epoch_log_file_name, "a")
+                    epoch_log.write("----------------------------------------------------------------------------------------\n")
+                    epoch_log.write("--------------------------------------Fine Tuning-----------------------------------------\n")
+                    epoch_log.write("----------------------------------------------------------------------------------------\n")
+
+                    self.model  = self.build_model().to(self.device)
+                    self.model.load_state_dict(torch.load(cv_path+'/'+'final_best_vali.pth'))
+
+                    finetuned_score_log = open(finetuned_score_log_file_name, "a")
+
+                    thre_index             = int(self.args.f_in * self.args.wavelet_filtering_finetuning_percent)-1
+                    gamma_weight           = self.model.gamma.squeeze().abs().clone()
+                    sorted_gamma_weight, i = torch.sort(gamma_weight,descending=True)
+                    threshold              = sorted_gamma_weight[thre_index]
+                    mask                   = gamma_weight.data.gt(threshold).float().to(self.device)
+                    idx0                   = np.squeeze(np.argwhere(np.asarray(mask.cpu().numpy())))
+                    # build the new model
+                    new_model              = model_builder(self.args, input_f_channel = thre_index).to(self.device)
+
+                    print("=" * 16, " Fine Tuning  : ", self.args.f_in-thre_index,"  will be pruned ", "=" * 16)
+                    print("Old model parameter :", self.model_size)
+                    print("Pruned model parameter :", np.sum([para.numel() for para in new_model.parameters()]))
+                    print("=" * 64)
+
+                    # Copy the weights
+                    flag_channel_selection = False
+                    for n,p in new_model.named_parameters():
+                        if "wavelet_conv" in n:
+                            p.data = self.model.state_dict()[n].data[idx0.tolist(), :,:,:].clone()
+                        elif n == "gamma":
+                            flag_channel_selection = True
+                            p.data = self.model.state_dict()[n].data[:, idx0.tolist(),:,:].clone()
+                        elif flag_channel_selection and "conv" in n:
+                            p.data = self.model.state_dict()[n].data[:, idx0.tolist(),:,:].clone()
+                            flag_channel_selection = False
+                        else:
+                            p.data = self.model.state_dict()[n].data.clone()
+
+                    early_stopping        = EarlyStopping(patience=15, verbose=True)
+                    learning_rate_adapter = adjust_learning_rate_class(self.args,True)
+                    model_optim           = optim.Adam(new_model.parameters(), lr=0.0001, weight_decay=0.01)
+                    criterion             = nn.CrossEntropyLoss(reduction="mean").to(self.device)
+                    for epoch in range(self.args.train_epochs):
+                        train_loss = []
+                        new_model.train()
+                        epoch_time = time.time()
+
+                        for (batch_x,batch_y,missing_indices) in train_loader:
+                            # batch_x = batch_x.double().to(self.device)
+                            batch_x = [x.double().to(self.device) for x in batch_x]
+                            batch_y = batch_y.long().to(self.device)
+                            outputs = new_model(batch_x, missing_indices)
+
+                            loss = criterion(outputs, batch_y)
 
                             train_loss.append(loss.item())
 
@@ -423,162 +582,45 @@ class Exp(object):
                             loss.backward()
                             model_optim.step()
 
-                            # Update progress bar description with current loss
-                            pbar.set_description(f'Epoch {epoch+1}/{self.args.train_epochs}, Loss: {loss.item():.4f}')
-                        pbar.close()
-
-                        print("Epoch: {} cost time: {}".format(epoch+1, time.time()-epoch_time))
-                        epoch_log.write("Epoch: {} cost time: {}".format(epoch+1, time.time()-epoch_time))
+                        print("Fine Tuning Epoch: {} cost time: {}".format(epoch+1, time.time()-epoch_time))
+                        epoch_log.write("Fine Tuning Epoch: {} cost time: {}".format(epoch+1, time.time()-epoch_time))
                         epoch_log.write("\n")
 
                         train_loss = np.average(train_loss)
-                        vali_loss , vali_acc, vali_f_w,  vali_f_macro,  vali_f_micro = self.validation(self.model, val_loader, criterion)
+                        vali_loss , vali_acc, vali_f_w,  vali_f_macro, vali_f_micro = self.validation(new_model, val_loader, criterion)
 
-                        print("VALI: Epoch: {0}, Steps: {1} | Train Loss: {2:.7f}  Vali Loss: {3:.7f} Vali Accuracy: {4:.7f}  Vali weighted F1: {5:.7f}  Vali macro F1 {6:.7f} ".format(
+                        print("Fine Tuning VALI: Epoch: {0}, Steps: {1} | Train Loss: {2:.7f}  Vali Loss: {3:.7f} Vali Accuracy: {4:.7f}  Vali weighted F1: {5:.7f}  Vali macro F1 {6:.7f} ".format(
                             epoch + 1, train_steps, train_loss, vali_loss, vali_acc, vali_f_w, vali_f_macro))
 
-                        epoch_log.write("VALI: Epoch: {0}, Steps: {1} | Train Loss: {2:.7f}  Vali Loss: {3:.7f} Vali Accuracy: {4:.7f}  Vali weighted F1: {5:.7f}  Vali macro F1 {6:.7f} \n".format(
+                        epoch_log.write("Fine Tuning VALI: Epoch: {0}, Steps: {1} | Train Loss: {2:.7f}  Vali Loss: {3:.7f} Vali Accuracy: {4:.7f}  Vali weighted F1: {5:.7f}  Vali macro F1 {6:.7f} \n".format(
                             epoch + 1, train_steps, train_loss, vali_loss, vali_acc, vali_f_w, vali_f_macro))
 
-                        early_stopping(vali_loss, self.model, cv_path, vali_f_macro, vali_f_w, epoch_log)
+                        early_stopping(vali_loss, new_model, cv_path, vali_f_macro, vali_f_w, epoch_log)
                         if early_stopping.early_stop:
                             print("Early stopping")
                             break
                         epoch_log.write("----------------------------------------------------------------------------------------\n")
                         epoch_log.flush()
                         learning_rate_adapter(model_optim,vali_loss)
-                
                     # rename the best_vali to final_best_vali
-                    os.rename(cv_path+'/'+'best_vali.pth', cv_path+'/'+'final_best_vali.pth')
+                    os.rename(cv_path+'/'+'best_vali.pth', cv_path+'/'+'final_finetuned_best_vali.pth')
 
-                    print("Loading the best validation model!")
-                    self.model.load_state_dict(torch.load(cv_path+'/'+'final_best_vali.pth'))
-                    #model.eval()
-                    test_loss , test_acc, test_f_w,  test_f_macro,  test_f_micro = self.validation(self.model, test_loader, criterion, iter+1)
-                    print("Final Test Performance : Test Accuracy: {0:.7f}  Test weighted F1: {1:.7f}  Test macro F1 {2:.7f} ".format (test_acc, test_f_w, test_f_macro))
+                    print("Loading the best finetuned validation model!")
+                    new_model.load_state_dict(torch.load(cv_path+'/'+'final_finetuned_best_vali.pth'))
+
+                    test_loss , test_acc, test_f_w,  test_f_macro,  test_f_micro = self.validation(new_model, test_loader, criterion)
+                    print("Fine Tuning Final Test Performance : Test Accuracy: {0:.7f}  Test weighted F1: {1:.7f}  Test macro F1 {2:.7f} ".format (test_acc, test_f_w, test_f_macro))
                     epoch_log.write("Final Test Performance : Test weighted F1: {0:.7f}  Test macro F1 {1:.7f}\n\n\n\n\n\n\n\n".format(test_f_w, test_f_macro))
                     epoch_log.flush()
 
-                    score_log.write("Test weighted F1: {0:.7f}  Test macro F1 {1:.7f}\n".format(test_f_w, test_f_macro))
-                    score_log.flush()
+                    finetuned_score_log.write("Test weighted F1: {0:.7f}  Test macro F1 {1:.7f}\n".format(test_f_w, test_f_macro))
+                    finetuned_score_log.flush()
 
                     epoch_log.close()
-                    score_log.close()
-
-                # ------------------------------ code for  regularization and fine tuning -----------------------------------------------------------------
-
-                if self.args.wavelet_filtering_finetuning:
-                    finetuned_score_log_file_name = os.path.join(self.path, "finetuned_score.txt")
-                    if skip_finetuning:
-                        print("================Skip the {} CV Experiment Fine Tuning================".format(iter))
-                    else:
-                        # thre_index : selected number
-                        epoch_log = open(epoch_log_file_name, "a")
-                        epoch_log.write("----------------------------------------------------------------------------------------\n")
-                        epoch_log.write("--------------------------------------Fine Tuning-----------------------------------------\n")
-                        epoch_log.write("----------------------------------------------------------------------------------------\n")
-
-                        self.model  = self.build_model().to(self.device)
-                        self.model.load_state_dict(torch.load(cv_path+'/'+'final_best_vali.pth'))
-
-                        finetuned_score_log = open(finetuned_score_log_file_name, "a")
-
-                        thre_index             = int(self.args.f_in * self.args.wavelet_filtering_finetuning_percent)-1
-                        gamma_weight           = self.model.gamma.squeeze().abs().clone()
-                        sorted_gamma_weight, i = torch.sort(gamma_weight,descending=True)
-                        threshold              = sorted_gamma_weight[thre_index]
-                        mask                   = gamma_weight.data.gt(threshold).float().to(self.device)
-                        idx0                   = np.squeeze(np.argwhere(np.asarray(mask.cpu().numpy())))
-                        # build the new model
-                        new_model              = model_builder(self.args, input_f_channel = thre_index).to(self.device)
-
-                        print("------------Fine Tuning  : ", self.args.f_in-thre_index,"  will be pruned   -----------------------------------------")
-                        print("old model Parameter :", self.model_size)
-                        print("pruned model Parameter :", np.sum([para.numel() for para in new_model.parameters()]))
-                        print("----------------------------------------------------------------------------------------")
-                        # copy the weights
-                        flag_channel_selection = False
-                        for n,p in new_model.named_parameters():
-                            if "wavelet_conv" in n:
-                                p.data = self.model.state_dict()[n].data[idx0.tolist(), :,:,:].clone()
-                            elif n == "gamma":
-                                flag_channel_selection = True
-                                p.data = self.model.state_dict()[n].data[:, idx0.tolist(),:,:].clone()
-                            elif flag_channel_selection and "conv" in n:
-                                p.data = self.model.state_dict()[n].data[:, idx0.tolist(),:,:].clone()
-                                flag_channel_selection = False
-                            else:
-                                p.data = self.model.state_dict()[n].data.clone()
-
-                        early_stopping        = EarlyStopping(patience=15, verbose=True)
-                        learning_rate_adapter = adjust_learning_rate_class(self.args,True)
-                        model_optim           = optim.Adam(new_model.parameters(), lr=0.0001, weight_decay=0.01)
-                        criterion             = nn.CrossEntropyLoss(reduction="mean").to(self.device)
-                        for epoch in range(self.args.train_epochs):
-                            train_loss = []
-                            new_model.train()
-                            epoch_time = time.time()
-
-                            for (batch_x1, _, batch_y) in train_loader:
-                                batch_x1 = batch_x1.double().to(self.device)
-                                # ShaSpec model takes modalities as input
-                                if self.args.model_type == "shaspec":
-                                    batch_x1 = self.split_data_into_modalities(batch_x1)
-                                batch_y = batch_y.long().to(self.device)
-                                outputs = new_model(batch_x1)
-
-                                loss = criterion(outputs, batch_y)
-
-                                train_loss.append(loss.item())
-
-                                model_optim.zero_grad()
-                                loss.backward()
-                                model_optim.step()
-
-                            print("Fine Tuning Epoch: {} cost time: {}".format(epoch+1, time.time()-epoch_time))
-                            epoch_log.write("Fine Tuning Epoch: {} cost time: {}".format(epoch+1, time.time()-epoch_time))
-                            epoch_log.write("\n")
-
-                            train_loss = np.average(train_loss)
-                            vali_loss , vali_acc, vali_f_w,  vali_f_macro,  vali_f_micro = self.validation(new_model, val_loader, criterion)
-
-                            print("Fine Tuning VALI: Epoch: {0}, Steps: {1} | Train Loss: {2:.7f}  Vali Loss: {3:.7f} Vali Accuracy: {4:.7f}  Vali weighted F1: {5:.7f}  Vali macro F1 {6:.7f} ".format(
-                                epoch + 1, train_steps, train_loss, vali_loss, vali_acc, vali_f_w, vali_f_macro))
-
-                            epoch_log.write("Fine Tuning VALI: Epoch: {0}, Steps: {1} | Train Loss: {2:.7f}  Vali Loss: {3:.7f} Vali Accuracy: {4:.7f}  Vali weighted F1: {5:.7f}  Vali macro F1 {6:.7f} \n".format(
-                                epoch + 1, train_steps, train_loss, vali_loss, vali_acc, vali_f_w, vali_f_macro))
-
-                            early_stopping(vali_loss, new_model, cv_path, vali_f_macro, vali_f_w, epoch_log)
-                            if early_stopping.early_stop:
-                                print("Early stopping")
-                                break
-                            epoch_log.write("----------------------------------------------------------------------------------------\n")
-                            epoch_log.flush()
-                            learning_rate_adapter(model_optim,vali_loss)
-                        # rename the best_vali to final_best_vali
-                        os.rename(cv_path+'/'+'best_vali.pth', cv_path+'/'+'final_finetuned_best_vali.pth')
-
-                        print("Loading the best finetuned validation model!")
-                        new_model.load_state_dict(torch.load(cv_path+'/'+'final_finetuned_best_vali.pth'))
-
-                        test_loss , test_acc, test_f_w,  test_f_macro,  test_f_micro = self.validation(new_model, test_loader, criterion)
-                        print("Fine Tuning Final Test Performance : Test Accuracy: {0:.7f}  Test weighted F1: {1:.7f}  Test macro F1 {2:.7f} ".format (test_acc, test_f_w, test_f_macro))
-                        epoch_log.write("Final Test Performance : Test weighted F1: {0:.7f}  Test macro F1 {1:.7f}\n\n\n\n\n\n\n\n".format(test_f_w, test_f_macro))
-                        epoch_log.flush()
-
-                        finetuned_score_log.write("Test weighted F1: {0:.7f}  Test macro F1 {1:.7f}\n".format(test_f_w, test_f_macro))
-                        finetuned_score_log.flush()
-
-                        epoch_log.close()
-                        finetuned_score_log.close()
-
-    def split_data_into_modalities(self, batch):
-        batch = torch.tensor_split(batch, self.args.num_modalities, dim=3)
-        # print("Shape of each batch: ", batch[0].shape)
-        return batch
-
+                    finetuned_score_log.close()
 
     def prediction_test(self):
+        print("PREDICTION TEST")
         assert self.args.exp_mode == "Given"
         model = self.build_model().to(self.device)
         model.load_state_dict(torch.load(os.path.join(self.path,'cv_0/best_vali.pth')))
@@ -600,9 +642,6 @@ class Exp(object):
                     outputs = self.model(batch_x1,batch_x2)
             else:
                 batch_x1 = batch_x1.double().to(self.device)
-                # ShaSpec model takes modalities as input
-                if self.args.model_type == "shaspec":
-                    batch_x1 = self.split_data_into_modalities(batch_x1)
                 batch_y = batch_y.long().to(self.device)
 
                 # model prediction
@@ -627,34 +666,18 @@ class Exp(object):
         preds = []
         trues = []
         with torch.no_grad():
-            for i, (batch_x1,batch_x2,batch_y) in enumerate(data_loader):
-
-                if "cross" in self.args.model_type:
-                    batch_x1 = batch_x1.double().to(self.device)
-                    batch_x2 = batch_x2.double().to(self.device)
-
-                    batch_y = batch_y.long().to(self.device)
-                    # model prediction
-                    if self.args.output_attention:
-                        outputs = model(batch_x1,batch_x2)[0]
-                    else:
-                        outputs = model(batch_x1,batch_x2)
+            for (batch_x,batch_y,missing_indices) in data_loader:
+                if selected_index is None:
+                    batch_x = [x.double().to(self.device) for x in batch_x]
                 else:
-                    if selected_index is None:
-                        batch_x1 = batch_x1.double().to(self.device)
-                        # ShaSpec model takes modalities as input
-                        if self.args.model_type == "shaspec":
-                            batch_x1 = self.split_data_into_modalities(batch_x1)
-                    else:
-                        batch_x1 = batch_x1[:, selected_index.tolist(),:,:].double().to(self.device)
-                    batch_y = batch_y.long().to(self.device)
+                    batch_x = batch_x[:, selected_index.tolist(),:,:].double().to(self.device)
+                batch_y = batch_y.long().to(self.device)
 
-                    # model prediction
-                    if self.args.output_attention:
-                        outputs = model(batch_x1)[0]
-                    else:
-                        outputs = model(batch_x1)
-
+                # model prediction
+                if self.args.output_attention:
+                    outputs = model(batch_x)[0]
+                else:
+                    outputs = model(batch_x, missing_indices)
                 pred = outputs.detach()#.cpu()
                 true = batch_y.detach()#.cpu()
 

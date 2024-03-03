@@ -95,8 +95,8 @@ class DSADS_HAR_DATA(BASE_DATA):
         self.vali_keys    = []
         self.test_keys    = [8]
 
-
-        self.LOCV_keys = [[1],[2],[3],[4],[5],[6],[7],[8]]
+        
+        self.LOCV_keys = [[1,2],[3,4],[5,6],[7,8]]
         self.all_keys = [1,2,3,4,5,6,7,8]
         self.sub_ids_of_each_sub = {}
 
@@ -116,7 +116,7 @@ class DSADS_HAR_DATA(BASE_DATA):
 
     def load_all_the_data(self, root_path):
 
-        print(" ----------------------- load all the data -------------------")
+        print("=" * 16, " Load all the data ", "=" * 16)
 
         df_dict = {}
 

@@ -43,7 +43,7 @@ class BaseEncoder(nn.Module):
         self.fc_fusion = nn.Linear(downsampled_length * filter_num, 2 * filter_num)
 
     def forward(self, x):
-        # print("Input shape: ", x.shape)
+        print("Input shape: ", x.shape)
         """
         Perform a forward pass of the SpecificEncoder model.
 
@@ -56,7 +56,7 @@ class BaseEncoder(nn.Module):
         The function applies a series of convolutional layers to extract features from each sensor channel, followed by a self-attention mechanism to refine these features. 
         Finally, it reshapes and passes the output through a fully connected layer for sensor channel fusion.
         """
-        # B x F x T x C 
+        # B x F x T x C
         x = self.conv_layers(x)
         # -----> B x F' x T* x C
 
@@ -110,7 +110,7 @@ class BaseEncoder(nn.Module):
             return x.shape[2]  
 
 
-class SpecificEncoder(BaseEncoder):
+class SpecificEncoder(nn.Module):
     """
     Specific Encoder to capture the unique characteristics of each modality.
 
@@ -118,45 +118,54 @@ class SpecificEncoder(BaseEncoder):
     Output: specific feature
     """
     def __init__(self, input_shape, filter_num, filter_size, activation, sa_div):
-        # Call the constructor of BaseEncoder
-        super(SpecificEncoder, self).__init__(input_shape, filter_num, filter_size, activation, sa_div)
+        super(SpecificEncoder, self).__init__()
+
+        self.be = BaseEncoder(
+            input_shape,
+            filter_num,
+            filter_size,
+            activation,
+            sa_div
+        )
 
     def forward(self, x):
-        # Call the forward method of BaseEncoder
-        x = super(SpecificEncoder, self).forward(x)
-        
+        x = self.be(x)
+
         return x
 
 
-class SharedEncoder(BaseEncoder):
+class SharedEncoder(nn.Module):
     """
     Shared Encoder to to extract common features that are informative accross all sensor channels.
 
-    Input: N modalities
+    Input: N concatenated modalities
     Output: N shared features as output
     """
-    def __init__(self, num_modalities, input_shape, filter_num, filter_size, activation, sa_div, shared_encoder_type):
-        self.num_modalities = num_modalities
-        if shared_encoder_type == "concatenated":
-            # Concatenate modalities before initializing the base class
-            input_shape = (input_shape[0], input_shape[1], input_shape[2], input_shape[3] * num_modalities)
-        self.num_of_sensor_channels = input_shape[3]
+    def __init__(self, num_available_modalities, input_shape, filter_num, filter_size, activation, sa_div, shared_encoder_type):
+        super(SharedEncoder, self).__init__()
+
+        self.num_available_modalities = num_available_modalities
+
+        # Concatenate modalities
+        input_shape = (input_shape[0], input_shape[1], input_shape[2], input_shape[3] * num_available_modalities)
+
+        # print("Shared encoder input shape in SharedEncoder: ", input_shape) # 64 1 125 36
+        self.be = BaseEncoder(
+            input_shape,
+            filter_num,
+            filter_size, 
+            activation, 
+            sa_div
+        )
+        # print("Shared encoder input shape: ", input_shape)
         
-        # Now that input_shape is correctly set, we can initialize the base class
-        super(SharedEncoder, self).__init__(input_shape, filter_num, filter_size, activation, sa_div)
-
-        self.shared_encoder_type = shared_encoder_type
-
     def forward(self, x):
-        # Call forward method of the base class
-        x = super(SharedEncoder, self).forward(x)
+        x = self.be(x)       
+        # print("Shared feature shape in forward func: ", x.shape)
+        shared_features = torch.tensor_split(x, self.num_available_modalities, dim=1)
+        # print("Each shared feature shape: ", shared_features[0].shape)
+        return shared_features
 
-        if self.shared_encoder_type == "concatenated":
-            split_tensors = torch.tensor_split(x, self.num_modalities, dim=1)
-            return split_tensors
-                
-        # If not concatenated, just return x
-        return x
 
 class ResidualBlock(nn.Module):
     def __init__(
@@ -170,20 +179,16 @@ class ResidualBlock(nn.Module):
 
     def forward(self, specific_feature, shared_feature):
         # Concatenate
+        # print("Specific feature shape: ", specific_feature.shape)
+        # print("Shared feature shape: ", shared_feature.shape)
         concatenated = torch.cat((specific_feature, shared_feature), dim=2)
-        # print("CONCATENATED: ", concatenated.shape)
 
         # Linear projection for fusion
         projected = self.fc_proj(concatenated)
-        # print("PROJECTED: ", projected.shape)
-        # print("-"*32)
-        # print(projected.shape)
-        # print(shared_feature.shape)
 
         # Residual block / Skip connection
         modality_embedding = projected + shared_feature
-        # print("MODALITY EMBEDDING: ", modality_embedding.shape)
-
+        
         return modality_embedding
 
 
@@ -194,23 +199,23 @@ class MissingModalityFeatureGeneration(nn.Module):
     def __init__(self):
         super(MissingModalityFeatureGeneration, self).__init__()
 
-    def forward(self, shared_features):
+    def forward(self, shared_features, missing_indices):
         """
         Args:
             shared_features (list): List of shared features for each modality, can contain None for missing modalities.
         Returns:
-            list: List of shared features with generated features replacing None for missing modalities.
+            list: List of generated features for missing modalities.
         """
 
-        # Filter out None values and stack existing shared features for averaging
-        valid_features = torch.stack([feature for feature in shared_features if feature is not None], dim=0)
-        
         # Calculate the mean along the stack dimension (0) to get the average feature
-        average_feature = torch.mean(valid_features, dim=0, keepdim=True)
-        
-        # Replace None in shared_features with the average feature
-        generated_features = [feature if feature is not None else average_feature for feature in shared_features]
-        
+        mean_feature = torch.mean(torch.stack(shared_features), dim=0)
+        # print("Mean feature: ", mean_feature)
+
+        generated_features = [mean_feature for _ in missing_indices]
+        # print("Missing indices length for gen. features: ", len(missing_indices))
+        # print("Generated features length: ", generated_features)
+        # print("Generated features: ", generated_features)
+
         return generated_features
 
 
@@ -235,15 +240,6 @@ class Decoder(nn.Module):
             # print("Num of sensor channels: ", num_of_sensor_channels)
             # print("modalities num: ", num_modalities)
             self.fc_layer = nn.Linear(2 * filter_num * num_of_sensor_channels * num_modalities, number_class)
-            
-        #elif decoder_type == "ConvTrans":
-            # @TODO: Ask Yexu what his idea was for this decoder
-            # Check input/output shape. ConvTranspose2d for upsampling and then Conv2d for downsampling to get the final output?
-            # self.decoder = nn.Sequential(
-            #     nn.ConvTranspose2d(2 * filter_num * num_modalities, filter_num, kernel_size=3, stride=2),
-            #     nn.ReLU(),
-            #     nn.ConvTranspose2d(filter_num, number_class, kernel_size=3, stride=2)
-            # )
 
     def forward(self, concatenated_features):
         output = self.flatten(concatenated_features)
@@ -259,6 +255,7 @@ class ShaSpec(nn.Module):
         self,
         input,
         num_modalities,
+        miss_rate,
         classes_num,
         filter_num,
         filter_size,
@@ -269,14 +266,23 @@ class ShaSpec(nn.Module):
     ):
         super(ShaSpec, self).__init__()
 
+        print("ShaSpec input shape: ", input)
+        # print("miss rate: ", miss_rate)
+        
         self.num_of_sensor_channels = input[3]
         self.shared_encoder_type = shared_encoder_type
 
+        # print("==== ShaSpec Model ====")
+        # print("Num of modalities: ", num_modalities)
+        # print("Miss rate: ", miss_rate)
+        self.num_available_modalities = int(num_modalities * (1 - miss_rate))
+        # print("Num of available modalities: ", self.num_available_modalities)
+
         # Individual specific encoders
-        self.specific_encoders = nn.ModuleList([SpecificEncoder(input, filter_num, filter_size, activation, sa_div) for _ in range(num_modalities)])
+        self.specific_encoders = nn.ModuleList([SpecificEncoder(input, filter_num, filter_size, activation, sa_div) for _ in range(self.num_available_modalities)])
 
         # One shared encoder for all modalities
-        self.shared_encoder = SharedEncoder(num_modalities, input, filter_num, filter_size, activation, sa_div, shared_encoder_type)
+        self.shared_encoder = SharedEncoder(self.num_available_modalities, input, filter_num, filter_size, activation, sa_div, shared_encoder_type)
 
         self.residual_block = ResidualBlock(filter_num)
 
@@ -284,53 +290,51 @@ class ShaSpec(nn.Module):
 
         self.decoder = Decoder(classes_num, self.num_of_sensor_channels, num_modalities, filter_num, decoder_type)
 
-    def forward(self, x_list):
+    def forward(self, x_list, missing_indices):
         """
-        x_list: list of input tensors, each corresponding to one modality.
+        x_list: List of tensors, each tensor represents a modality
+        missing_indices: List of indices of missing modalities
         """
-        # for x in x_list:
-        #     print("Input shape: ", x.shape)
+        # print("Available modalities: ", self.num_available_modalities)
+        # print("Input list: ", x_list)
+        # print("Missing index: ", missing_indices)
 
-        # print("-"*16, "Specific Encoder", "-"*16)
-        # List of all specific features
-        specific_features = [encoder(x) for encoder, x in zip(self.specific_encoders, x_list)]
-        # for feature in specific_features:
-        #     print("SPECIFIC FEATURE SHAPE: ", feature.shape)
-        # print("SPECIFIC FEATURES: ", specific_features)
-        # print("SPECIFIC FEATURES LENGTH: ", len(specific_features))
+        # Filter out missing modalities
+        available_indices = [modality for modality in range(len(x_list)) if modality not in missing_indices]
+        # print("Available indices: ", available_indices)
+        available_modalities = [x_list[i] for i in available_indices]
+        # print("Available x list length: ", len(available_modalities))
 
-        # print("-"*16, "Shared Encoder", "-"*16)
-        # Process inputs through the shared encoder based on the chosen type
-        if self.shared_encoder_type == "concatenated":
-            # Concatenate the modalities for shared processing
-            concatenated_inputs = torch.cat(x_list, dim=3)  # Adjust dim according to how you concatenate
-            shared_features = self.shared_encoder(concatenated_inputs)
-        # elif self.shared_encoder_type == "weighted":
+        # Process with specific encoders for available modalities
+        specific_features = [self.specific_encoders[i](available_modalities[i]) for i in range(len(available_modalities))]    
+        # print("Specific features length: ", len(specific_features))
 
-        #     shared_features = []
-        #     for x in x_list:
-        #         shared_features.append(self.share_encoder(x))
-        # print("Shared features: ", shared_features)
-        # for feature in shared_features:
-        #     print("SHARED FEATURE SHAPE: ", feature.shape)
-        # print("SHARED FEATURES LENGTH: ", len(shared_features))
 
-        # Generate features for missing modalities
-        #shared_features = self.missing_modality_feature_generation(shared_features)
 
+        # print("Available modality shape: ", available_modalities[0].shape)
+        # Concatenate the modalities for shared processing
+        concatenated_inputs = torch.cat(available_modalities, dim=3)  # Adjust dim according to how you concatenate
+        shared_features = self.shared_encoder(concatenated_inputs)
+        # print("Shared features shape: ", shared_features[0].shape)
+    
+
+        # Fuse specific and shared features for available modalities
         fused_features = []
         for specific, shared in zip(specific_features, shared_features):
-            # Process each pair through the residual block
             fused_feature = self.residual_block(specific, shared)
             fused_features.append(fused_feature)
-        # print("MODALITY EMBEDDINGS: ", fused_features)
 
-        # Prepare features for decoder by concatenating them along the F dimension
+        # Reconstruct missing modalities using shared features
+        generated_features = self.missing_modality_feature_generation(shared_features, missing_indices)
+
+        # Insert the reconstructed modalities back at their original positions into fused_features
+        for index, feature in sorted(zip(missing_indices, generated_features), key=lambda x: x[0]):
+            fused_features.insert(index, feature)
+
+        # Prepare for decoding
         concatenated_features = torch.cat(fused_features, dim=2)
-        # print("Shape of concatenated features: ", concatenated_features.shape)
 
+        # Decode to get final predictions
         prediction = self.decoder(concatenated_features)
-
-        # print("Prediction shape: ", prediction.shape)
 
         return prediction

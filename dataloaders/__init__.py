@@ -79,20 +79,17 @@ data_dict = {"hapt"  : HAPT_HAR_DATA,
              "bosch" : BOSCH_HAR_DATA}
 
 class data_set(Dataset):
-    def __init__(self, args, dataset, flag, miss_rate):
+    def __init__(self, args, dataset, flag):
         """
         args : a dict , In addition to the parameters for building the model, the parameters for reading the data are also in here
         dataset : It should be implmented dataset object, it contarins train_x, train_y, vali_x,vali_y,test_x,test_y
         flag : (str) "train","test","vali"
         """
-        print(args)
-        print(dataset)
+        # print(args)
+        # print(dataset)
         print(flag)
         self.args = args
         self.flag = flag
-        self.miss_rate = miss_rate
-        self.num_modalities = args.num_modalities
-        print("MODALITIES: ", self.num_modalities)
         self.load_all = args.load_all
         self.data_x = dataset.normalized_data_x
         self.data_y = dataset.data_y
@@ -146,32 +143,10 @@ class data_set(Dataset):
         self.input_length = self.slidingwindows[0][2]-self.slidingwindows[0][1]
         self.channel_in = self.data_x.shape[1]-2
 
-
-        #if self.args.wavelet_filtering:
-        #    SelectedWavelet = PrepareWavelets(K=self.args.number_wavelet_filtering, length=self.args.windowsize)
-        #    self.ScaledFilter = FiltersExtention(SelectedWavelet)
-        #    if self.args.windowsize%2==1:
-        #        self.Filter_ReplicationPad1d = torch.nn.ReplicationPad1d(int((self.args.windowsize-1)/2))
-        #    else:
-        #        self.Filter_ReplicationPad1d = torch.nn.ReplicationPad1d(int(self.args.windowsize/2))
-
-        if self.flag == "train":
-            print("The number of classes is : ", self.nb_classes)
-            print("The input_length  is : ", self.input_length)
-            print("The channel_in is : ", self.channel_in)
-            
     def __getitem__(self, index):
         """
         Responsible for fetching a data sample for the model.
-        """
-        # print(index)
-        # ShaSpec specific code
-        miss_rate = self.miss_rate
-        # print("__getitem__ miss_rate: ", miss_rate)
-        num_modalities = self.num_modalities
-        total_num_channels = self.channel_in
-        channels_per_modality = total_num_channels // num_modalities
-
+        """ 
         index = self.window_index[index]
         start_index = self.slidingwindows[index][1]
         end_index = self.slidingwindows[index][2]
@@ -186,25 +161,8 @@ class data_set(Dataset):
 
             sample_y = self.class_transform[self.data_y.iloc[start_index:end_index].mode().loc[0]]
 
-            # print(sample_x.shape)
-            sample_x = np.expand_dims(sample_x,0)
-            # print(sample_x.shape)
-
-            # Calculate the number of modalities to omit
-            modalities_to_omit = int(miss_rate * num_modalities)
-
-            if modalities_to_omit > 0:
-                # Select which modalities to omit
-                omitted_modalities_indices = np.random.choice(num_modalities, modalities_to_omit, replace=False)
-                print("omitted_modalities_indices: ", omitted_modalities_indices)
-
-                for modality_index in omitted_modalities_indices:
-                    # Calculate the channel range for the current modality
-                    start_channel = modality_index * channels_per_modality
-                    end_channel = start_channel + channels_per_modality
-                    
-                    # Set the channels for the omitted modality to zero
-                    sample_x[:, :, start_channel:end_channel] = 0
+            # Add a new axis to represent channels dimension
+            sample_x = np.expand_dims(sample_x, 0) 
 
             return sample_x, sample_y, sample_y
 

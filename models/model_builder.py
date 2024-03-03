@@ -81,9 +81,6 @@ class model_builder(nn.Module):
         else:
             f_in  = input_f_channel
 
-
-
-
         if self.args.wavelet_filtering:
             self.wave_conv = Wavelet_learnable_filter(args, f_in)
 
@@ -97,9 +94,6 @@ class model_builder(nn.Module):
                 # self.gamma = nn.Parameter(torch.ones(shape))
                 #self.register_buff
 		
-
-
-
 
         if self.args.model_type == "tinyhar":
             config_file = open('configs/model.yaml', mode='r')
@@ -160,6 +154,7 @@ class model_builder(nn.Module):
             config = yaml.load(config_file, Loader=yaml.FullLoader)["shaspec"]
             self.model  = ShaSpec((1, f_in, self.args.input_length, self.args.c_in),
                                   self.args.num_modalities,
+                                  self.args.miss_rate,
                                   self.args.classes_num,
                                   filter_num = config["filter_num"],
                                   filter_size = config["filter_size"],
@@ -174,14 +169,13 @@ class model_builder(nn.Module):
             print("Build the None model!")
 
 
-    def forward(self, x):
-        #if self.first_conv ：
-        #    x = self.pre_conv(x)
+    def forward(self, x, missing_indices):
         if self.args.wavelet_filtering:
             x = self.wave_conv(x)
             if self.args.wavelet_filtering_regularization:
                 x = x * self.gamma
-        y = self.model(x)
+        print("In model_builder.forward() missing_indices: ", missing_indices)
+        y = self.model(x, missing_indices)
         return y
 
 
