@@ -144,18 +144,18 @@ class model_builder(nn.Module):
         elif self.args.model_type == "deepconvlstm":
             config_file = open('configs/model.yaml', mode='r')
             config = yaml.load(config_file, Loader=yaml.FullLoader)["deepconvlstm"]
-            self.model  = DeepConvLSTM((1,f_in, self.args.input_length, self.args.c_in ), 
+            self.model  = DeepConvLSTM((1, f_in, self.args.input_length, self.args.c_in), 
                                        self.args.num_classes,
                                        self.args.filter_scaling_factor,
                                        config)
             print("Build the DeepConvLSTM model!")
         elif self.args.model_type == "shaspec":
-            config_file = open('configs/model.yaml', mode='r')
+            config_file = open('../../configs/model.yaml', mode='r')
             config = yaml.load(config_file, Loader=yaml.FullLoader)["shaspec"]
-            self.model  = ShaSpec((1, f_in, self.args.input_length, self.args.c_in),
+            self.model  = ShaSpec((1, f_in, self.args.input_length, self.args.c_in_per_mod),
                                   self.args.num_modalities,
                                   self.args.miss_rate,
-                                  self.args.classes_num,
+                                  self.args.num_classes,
                                   filter_num = config["filter_num"],
                                   filter_size = config["filter_size"],
                                   sa_div = config["sa_div"],
@@ -164,18 +164,23 @@ class model_builder(nn.Module):
                                   shared_encoder_type = self.args.shared_encoder_type # concatenated weighted
                                   )
             print("Build the ShaSpec model!")
+            print("Selected miss rate: ", self.args.miss_rate)
         else:
             self.model = Identity()
             print("Build the None model!")
 
 
-    def forward(self, x, missing_indices):
+    def forward(self, x, missing_indices=None):
         if self.args.wavelet_filtering:
             x = self.wave_conv(x)
             if self.args.wavelet_filtering_regularization:
                 x = x * self.gamma
-        print("In model_builder.forward() missing_indices: ", missing_indices)
-        y = self.model(x, missing_indices)
+        
+        if self.args.model_type == "shaspec":
+            y = self.model(x, missing_indices)
+        else:
+            y = self.model(x)
+        
         return y
 
 

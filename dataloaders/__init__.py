@@ -87,7 +87,7 @@ class data_set(Dataset):
         """
         # print(args)
         # print(dataset)
-        print(flag)
+        # print(flag)
         self.args = args
         self.flag = flag
         self.load_all = args.load_all
@@ -115,20 +115,20 @@ class data_set(Dataset):
         if self.flag == "train":
             # load train
             self.window_index =  dataset.train_window_index
-            print("Train data number : ", len(self.window_index))
+            print("Train data number: ", len(self.window_index))
 
 
         elif self.flag == "vali":
             # load vali
 
             self.window_index =  dataset.vali_window_index
-            print("Validation data number : ",  len(self.window_index))  
+            print("Validation data number: ",  len(self.window_index))  
 
 
         else:
             # load test
             self.window_index = dataset.test_window_index
-            print("Test data number : ", len(self.window_index))  
+            print("Test data number: ", len(self.window_index))  
             
             
         all_labels = list(np.unique(dataset.data_y))

@@ -68,17 +68,17 @@ class Exp(object):
         # set the device
         self.device = self.acquire_device()
 
-        self.optimizer_dict = {"Adam":optim.Adam}
-        self.criterion_dict = {"MSE":nn.MSELoss,"CrossEntropy":nn.CrossEntropyLoss}
+        self.optimizer_dict = {"Adam": optim.Adam}
+        self.criterion_dict = {"MSE": nn.MSELoss, "CrossEntropy": nn.CrossEntropyLoss}
 
         # Biuld The Model
         self.model  = self.build_model().to(self.device)
         print("Done!")
-        self.model_size = np.sum([para.numel() for para in self.model.parameters() if para.requires_grad])
-        print("Parameter :", self.model_size)
+        self.args.model_size = np.sum([para.numel() for para in self.model.parameters() if para.requires_grad])
+        print("Parameter:", self.args.model_size)
 
 
-        print("Set the seed as : ", self.args.seed)
+        print("Set the seed as: ", self.args.seed)
 
     def acquire_device(self):
         if self.args.use_gpu:
@@ -114,7 +114,7 @@ class Exp(object):
         Returns:
         - batch_x: list of tensors, each tensor is a batch of data for a modality
         - batch_y: tensor, batch of labels
-        - omitted_modality_indices: list of indices of omitted modalities
+        - missing_indices: list of indices of omitted modalities
         """
         if flag == 'train':
             shuffle_flag = True 
@@ -131,16 +131,15 @@ class Exp(object):
             
             num_modalities = self.args.num_modalities
             miss_rate = self.args.miss_rate
-            shapes = [arr[0].shape for arr in batch]
-            print(shapes)
+            # shapes = [arr[0].shape for arr in batch]
+            # print(shapes)
 
             # Calculate the number of modalities to omit
             modalities_to_omit = int(miss_rate * num_modalities)
 
             batch_x = []
             batch_y  = []
-            omitted_modality_indices = np.random.choice(num_modalities, modalities_to_omit, replace=False)
-            print(omitted_modality_indices)
+            missing_indices = np.random.choice(num_modalities, modalities_to_omit, replace=False)
 
             # Collect batch
             for x, _, z in batch:
@@ -158,17 +157,34 @@ class Exp(object):
                 #print(batch_x1.shape,batch_y.shape)
             batch_x = torch.unsqueeze(batch_x,1)
 
-            batch_x = list(torch.tensor_split(batch_x, self.args.num_modalities, dim=3))
-            print(batch_x[0].shape)
-            print(len(batch_x))
+            if self.args.model_type == "shaspec":
+                # Split the tensor into the number of modalities and convert to list
+                batch_x = list(torch.tensor_split(batch_x, self.args.num_modalities, dim=3))
+                # print(batch_x[0].shape)
+                # print(len(batch_x))
 
-            # Setting the omitted modalities to NaN (or zero)
-            for index in omitted_modality_indices:
-                # Ensure the tensor at the omitted modality index is filled with NaN
-                batch_x[index] = torch.full_like(batch_x[index], float('nan'))
-                print("Missing modality: ", batch_x[index])
+                # Setting the omitted modalities to NaN (or zero)
+                for index in missing_indices:
+                    # Ensure the tensor at the omitted modality index is filled with NaN
+                    batch_x[index] = torch.full_like(batch_x[index], float('nan'))
+                    # print("Missing modality: ", batch_x[index])
+            else:
+                # Setting the omitted modalities to NaN (or zero)
+                for index in missing_indices:
+                    print("Index:", index)
+                    print("From: ", index * self.args.c_in)
+                    print("To: ", (index+1) * self.args.c_in)
+                    from_index = index * self.args.c_in
+                    to_index = (index + 1) * self.args.c_in
+                    # Ensure the tensor at the omitted modality index is filled with NaN
+                    batch_x[:, :, :, from_index:to_index] = torch.full_like(batch_x[:, :, :, from_index:to_index], float('nan'))
+                    print("Missing modality: ", batch_x[:, :, :, from_index:to_index])
+                    print("Available modalities: ", batch_x)
+                    print("Batch shape after missing modality: ", batch_x.shape)
+                pass
+            
 
-            return batch_x, batch_y, omitted_modality_indices
+            return batch_x, batch_y, missing_indices
         # else:
         #     collate_fn = None
 
@@ -200,21 +216,19 @@ class Exp(object):
         if self.args.model_type in ["deepconvlstm", "deepconvlstm_attn", "mcnn", "attend", "sahar", "tinyhar", "shaspec"]:
             setting = "model_{}_data_{}_seed_{}_differencing_{}_Seperation_{}_magnitude_{}_Mixup_{}_RandomAug_{}_Scaling_{}_Mixupargmax_{}_MissRate_{}".format(
                                                                                                                         self.args.model_type,
-                                                                                                                        self.args.data_name,
-                                                                                                                        self.args.seed,
-                                                                                                                        self.args.difference,
-                                                                                                                        self.args.filtering,
-                                                                                                                        self.args.magnitude,
-                                                                                                                         self.args.mixup_probability,
-                                                                                                                         self.args.mixup_probability,
+                                                                                                                         self.args.data_name,
+                                                                                                                         self.args.seed,
+                                                                                                                         self.args.difference,
+                                                                                                                         self.args.filtering,
+                                                                                                                         self.args.magnitude,
 
-                                                                                                                        self.args.mixup_probability,
+                                                                                                                         self.args.mixup_probability,
 
                                                                                                                         self.args.random_augmentation_prob,
                                                                                                                         self.args.filter_scaling_factor,
                                                                                                                         self.args.mixup_argmax,
-                                                                                                                        self.args.miss_rate,
-                                                                                                                        )
+                                                                                                                        self.args.miss_rate)
+
             return setting
         else:
             raise NotImplementedError
@@ -310,6 +324,8 @@ class Exp(object):
 
 
     def train(self):
+        start_time = time.time()
+
         setting = self.get_setting_name()
 
         path = os.path.join(self.args.to_save_path,'logs/'+setting)
@@ -322,6 +338,7 @@ class Exp(object):
 
         config_dict = {
             'model_type': self.args.model_type,
+            'model_size': int(self.args.model_size),
             'data_name': self.args.data_name,
             'seed': self.args.seed,
             'batch_size': self.args.batch_size,
@@ -342,14 +359,14 @@ class Exp(object):
             'decoder': self.args.decoder_type,
             'shared_encoder_type': self.args.shared_encoder_type,
             'sampling_freq': self.args.sampling_freq,
-            'classes_num': self.args.classes_num,
+            'num_classes': self.args.num_classes,
             'num_modalities': self.args.num_modalities,
-            'dataset miss_rates': self.args.miss_rates,
+            'miss_rates': self.args.miss_rates,
             'selected miss_rate': self.args.miss_rate,
             'windowsize': self.args.windowsize,
             'input_length': self.args.input_length,
             'c_in': self.args.c_in,
-            'f_in': self.args.f_in,
+            'f_in': self.args.f_in
         }
 
         torch.manual_seed(self.args.seed)
@@ -362,8 +379,8 @@ class Exp(object):
         # Load the data
         dataset = data_dict[self.args.data_name](self.args)
 
-        print("=" * 16, " {dataset.exp_mode} Mode ", "=" * 16)
-        print("=" * 16, " {dataset.num_of_cv} CV folds in total ", "=" * 16)
+        print("=" * 16, f" {dataset.exp_mode} Mode ", "=" * 16)
+        print("=" * 16, f" {dataset.num_of_cv} CV folds in total ", "=" * 16)
 
         num_of_cv = dataset.num_of_cv
 
@@ -384,7 +401,7 @@ class Exp(object):
             os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
             os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":16:8"
 
-            print(f"================ CV {iter} ================")
+            print("=" * 16, f" CV {iter} ", "=" * 16)
     
             dataset.update_train_val_test_keys()
 
@@ -416,7 +433,7 @@ class Exp(object):
             epoch_log_file_name = os.path.join(cv_path, "epoch_log.txt")
 
             if skip_train:
-                print(f"=" * 16, " Skip the {iter} CV experiment ", "=" * 16)
+                print("=" * 16, f" Skip the {iter} CV experiment ", "=" * 16)
             else:
 
                 if os.path.exists(epoch_log_file_name):
@@ -425,7 +442,7 @@ class Exp(object):
                 epoch_log = open(epoch_log_file_name, "a")
                 score_log = open(score_log_file_name, "a")
 
-                print(f"================ Build the {self.args.model_type} model ================ ")	
+                print("=" * 16, f" Build the {self.args.model_type} model ", "=" * 16)	
         
                 self.model  = self.build_model().to(self.device)
 
@@ -444,16 +461,20 @@ class Exp(object):
                     train_loss = []
                     self.model.train()
                     epoch_time = time.time()
-                    
-                    pbar = tqdm(train_loader, desc=f'Epoch {epoch+1}/{self.args.train_epochs}', leave=True)
+                
                     for (batch_x,batch_y,missing_indices) in train_loader:                        
-                        # TODO: Google it more
                         # Ensure models and variables are on the same device
-                        batch_x = [x.double().to(self.device) for x in batch_x]
+                        if self.args.model_type == "shaspec":
+                            batch_x = [x.double().to(self.device) for x in batch_x]
+                        else:
+                            batch_x = batch_x.double().to(self.device)
 
                         batch_y = batch_y.long().to(self.device)
                         
-                        outputs = self.model(batch_x, missing_indices)
+                        if self.args.model_type == "shaspec":
+                            outputs = self.model(batch_x, missing_indices)
+                        else:
+                            outputs = self.model(batch_x)
                         
                         loss = criterion(outputs, batch_y)
     
@@ -471,11 +492,8 @@ class Exp(object):
                         loss.backward()
                         model_optim.step()
 
-                        # Update progress bar description with current loss
-                        pbar.set_description(f'Epoch {epoch+1}/{self.args.train_epochs}, Loss: {loss.item():.4f}')
-                    pbar.close()
 
-                    print("Epoch: {} cost time: {}".format(epoch+1, time.time()-epoch_time))
+                    print(f"Epoch: {epoch + 1} cost time: {time.time()-epoch_time}")
                     epoch_log.write("Epoch: {} cost time: {}".format(epoch+1, time.time()-epoch_time))
                     epoch_log.write("\n")
 
@@ -503,11 +521,11 @@ class Exp(object):
                 self.model.load_state_dict(torch.load(cv_path+'/'+'final_best_vali.pth'))
                 #model.eval()
                 test_loss , test_acc, test_f_w,  test_f_macro,  test_f_micro = self.validation(self.model, test_loader, criterion, iter+1)
-                print("Final Test Performance : Test Accuracy: {0:.7f}  Test weighted F1: {1:.7f}  Test macro F1 {2:.7f} ".format (test_acc, test_f_w, test_f_macro))
-                epoch_log.write("Final Test Performance : Test weighted F1: {0:.7f}  Test macro F1 {1:.7f}\n\n\n\n\n\n\n\n".format(test_f_w, test_f_macro))
+                print(f"Final Test Performance : Test Accuracy: {test_acc:.7f}  Test weighted F1: {test_f_w:.7f}  Test macro F1 {test_f_macro:.7f}")
+                epoch_log.write(f"Final Test Performance : Test Loss: {test_loss:.7f}  Test Accuracy: {test_acc:.7f}  Test weighted F1: {test_f_w:.7f}  Test macro F1 {test_f_macro:.7f}  Test micro F1: {test_f_micro:.7f}\n")
                 epoch_log.flush()
 
-                score_log.write("Test weighted F1: {0:.7f}  Test macro F1 {1:.7f}\n".format(test_f_w, test_f_macro))
+                score_log.write(f"Test Loss: {test_loss:.7f}  Test Accuracy: {test_acc:.7f}  Test weighted F1: {test_f_w:.7f}  Test macro F1 {test_f_macro:.7f}  Test micro F1: {test_f_micro:.7f}\n")
                 score_log.flush()
 
                 epoch_log.close()
@@ -572,7 +590,10 @@ class Exp(object):
                             # batch_x = batch_x.double().to(self.device)
                             batch_x = [x.double().to(self.device) for x in batch_x]
                             batch_y = batch_y.long().to(self.device)
+
+                            
                             outputs = new_model(batch_x, missing_indices)
+                            
 
                             loss = criterion(outputs, batch_y)
 
@@ -582,15 +603,14 @@ class Exp(object):
                             loss.backward()
                             model_optim.step()
 
-                        print("Fine Tuning Epoch: {} cost time: {}".format(epoch+1, time.time()-epoch_time))
+                        print(f"Fine Tuning Epoch: {epoch+1} cost time: {time.time()-epoch_time}")
                         epoch_log.write("Fine Tuning Epoch: {} cost time: {}".format(epoch+1, time.time()-epoch_time))
                         epoch_log.write("\n")
 
                         train_loss = np.average(train_loss)
                         vali_loss , vali_acc, vali_f_w,  vali_f_macro, vali_f_micro = self.validation(new_model, val_loader, criterion)
 
-                        print("Fine Tuning VALI: Epoch: {0}, Steps: {1} | Train Loss: {2:.7f}  Vali Loss: {3:.7f} Vali Accuracy: {4:.7f}  Vali weighted F1: {5:.7f}  Vali macro F1 {6:.7f} ".format(
-                            epoch + 1, train_steps, train_loss, vali_loss, vali_acc, vali_f_w, vali_f_macro))
+                        print(f"Fine Tuning VALI: Epoch: {epoch + 1}, Steps: {train_steps} | Train Loss: {train_loss:.7f} Vali Loss: {vali_loss:.7f} Vali Accuracy: {vali_acc:.7f} Vali weighted F1: {vali_f_w:.7f} Vali macro F1 {vali_f_macro:.7f}")
 
                         epoch_log.write("Fine Tuning VALI: Epoch: {0}, Steps: {1} | Train Loss: {2:.7f}  Vali Loss: {3:.7f} Vali Accuracy: {4:.7f}  Vali weighted F1: {5:.7f}  Vali macro F1 {6:.7f} \n".format(
                             epoch + 1, train_steps, train_loss, vali_loss, vali_acc, vali_f_w, vali_f_macro))
@@ -609,7 +629,7 @@ class Exp(object):
                     new_model.load_state_dict(torch.load(cv_path+'/'+'final_finetuned_best_vali.pth'))
 
                     test_loss , test_acc, test_f_w,  test_f_macro,  test_f_micro = self.validation(new_model, test_loader, criterion)
-                    print("Fine Tuning Final Test Performance : Test Accuracy: {0:.7f}  Test weighted F1: {1:.7f}  Test macro F1 {2:.7f} ".format (test_acc, test_f_w, test_f_macro))
+                    print(f"Fine Tuning Final Test Performance : Test Accuracy: {test_acc:.7f}  Test weighted F1: {test_f_w:.7f}  Test macro F1 {test_f_macro:.7f}")
                     epoch_log.write("Final Test Performance : Test weighted F1: {0:.7f}  Test macro F1 {1:.7f}\n\n\n\n\n\n\n\n".format(test_f_w, test_f_macro))
                     epoch_log.flush()
 
@@ -618,6 +638,21 @@ class Exp(object):
 
                     epoch_log.close()
                     finetuned_score_log.close()
+        end_time = time.time()
+        training_duration_hours = (end_time - start_time) / 3600
+
+        # Load the existing config
+        with open(config_file_name, 'r') as config_file:
+            config_dict = json.load(config_file)
+
+        # Update the config with the training duration
+        config_dict['training_duration_hours'] = training_duration_hours
+
+        # Save the updated config
+        with open(config_file_name, 'w') as config_file:
+            json.dump(config_dict, config_file, indent=4)
+
+        
 
     def prediction_test(self):
         print("PREDICTION TEST")
@@ -674,10 +709,10 @@ class Exp(object):
                 batch_y = batch_y.long().to(self.device)
 
                 # model prediction
-                if self.args.output_attention:
-                    outputs = model(batch_x)[0]
-                else:
-                    outputs = model(batch_x, missing_indices)
+                
+                outputs = model(batch_x, missing_indices)
+                
+
                 pred = outputs.detach()#.cpu()
                 true = batch_y.detach()#.cpu()
 

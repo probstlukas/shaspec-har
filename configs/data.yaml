@@ -242,7 +242,7 @@ dsads:
   num_classes: 19
   num_channels: 45
   num_modalities: 5
-  miss_rates: [0, 0.2, 0.4, 0.6]
+  miss_rates: [0.0, 0.2, 0.4, 0.6]
   window_seconds: 5 # 5 * 25 = 125
   sensors:
   - acc_x_T

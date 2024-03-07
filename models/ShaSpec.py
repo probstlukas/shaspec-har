@@ -43,7 +43,7 @@ class BaseEncoder(nn.Module):
         self.fc_fusion = nn.Linear(downsampled_length * filter_num, 2 * filter_num)
 
     def forward(self, x):
-        print("Input shape: ", x.shape)
+        # print("Input shape: ", x.shape)
         """
         Perform a forward pass of the SpecificEncoder model.
 
@@ -256,7 +256,7 @@ class ShaSpec(nn.Module):
         input,
         num_modalities,
         miss_rate,
-        classes_num,
+        num_classes,
         filter_num,
         filter_size,
         sa_div,
@@ -266,9 +266,9 @@ class ShaSpec(nn.Module):
     ):
         super(ShaSpec, self).__init__()
 
-        print("ShaSpec input shape: ", input)
+        # print("ShaSpec input shape: ", input)
         # print("miss rate: ", miss_rate)
-        
+        print("Filter num: ", filter_num)
         self.num_of_sensor_channels = input[3]
         self.shared_encoder_type = shared_encoder_type
 
@@ -288,7 +288,7 @@ class ShaSpec(nn.Module):
 
         self.missing_modality_feature_generation = MissingModalityFeatureGeneration()
 
-        self.decoder = Decoder(classes_num, self.num_of_sensor_channels, num_modalities, filter_num, decoder_type)
+        self.decoder = Decoder(num_classes, self.num_of_sensor_channels, num_modalities, filter_num, decoder_type)
 
     def forward(self, x_list, missing_indices):
         """
