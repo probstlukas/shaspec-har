@@ -1,11 +1,11 @@
 #!/usr/bin/env python
 
-#SBATCH --job-name=ISWC23
+#SBATCH --job-name=shaspec24
 
 #SBATCH --error=%x.%j.err
 #SBATCH --output=%x.%j.out
 
-#SBATCH --mail-user=hzhao@teco.edu
+#SBATCH --mail-user=probst@teco.edu
 
 #SBATCH --export=ALL
 
@@ -99,7 +99,10 @@ parser.add_argument('--temporal-info-aggregation-type', dest='temporal_info_aggr
 
 # ShaSpec-specific
 parser.add_argument('--decoder-type', dest='decoder_type', default= "FC", type=str, help='Set the decoder_type type for the ShaSpec model')
-parser.add_argument('--shared_encoder-type', dest='shared_encoder_type', default= "concatenated", type=str, help='Set the shared_encoder_type type for the ShaSpec model')
+parser.add_argument('--shared-encoder-type', dest='shared_encoder_type', default= "concatenated", type=str, help='Set the shared_encoder_type type for the ShaSpec model')
+parser.add_argument('--miss-rate', dest='miss_rate', default=0.0, type=float, help='Set the miss rate for modalities')
+parser.add_argument('--use-shared-encoder', dest='use_shared_encoder', default=True, type=bool, help='Whether the shared encoder should be used or not')
+parser.add_argument('--use-missing-modality-features', dest='use_missing_modality_features', default=True, type=bool, help='Whether the missing modality feature generation should be used or not')
 
 args = parser.parse_args()
 
