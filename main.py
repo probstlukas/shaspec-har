@@ -18,7 +18,8 @@ import os
 import sys
 
 sys.path.append(os.getcwd())
-sys.path.append('/pfs/data5/home/kit/tm/px6680/lukasprobst/I2S0W2C2_CFC/')
+# SDIL path
+sys.path.append('/pfs/data5/home/kit/tm/px6680/lukasprobst/shaspec-har/')
 import argparse
 from experiment import Exp
 
@@ -61,6 +62,9 @@ parser.add_argument('--seed', dest='seed', default=1, type=int,  help='Set the t
 
 parser.add_argument('--data-name', dest='data_name', default= None, type=str, help='Set the dataset name')
 
+parser.add_argument('--difference', dest='difference', action='store_true', help='Whether to use difference')
+parser.add_argument('--filtering', dest='filtering', action='store_true', help='Whether to use filtering')
+parser.add_argument('--magnitude', dest='magnitude', action='store_true', help='Whether to use magnitude')
 parser.add_argument('--weighted-sampler', dest='weighted_sampler', action='store_true', help='Whether to use weighted_sampler')
 parser.add_argument('--mixup-alpha', dest='mixup_alpha', default=0.5, type=float,  help='Set the mixup distribution')
 
