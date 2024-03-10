@@ -173,6 +173,8 @@ class Exp(object):
 
         setting = self.get_setting_name()
 
+        print("=" * 16, f" {setting} ", "=" * 16)
+
         path = os.path.join(self.args.to_save_path,'logs/'+setting)
         self.path = path
         if not os.path.exists(path):
@@ -361,10 +363,10 @@ class Exp(object):
                     learning_rate_adapter(model_optim,vali_loss)
             
                 # Rename the best_vali to final_best_vali
-                os.rename(cv_path+'/'+'best_vali.pth', cv_path+'/'+'final_best_vali.pth')
+                os.rename(cv_path + '/' + 'best_vali.pth', cv_path + '/' + 'final_best_vali.pth')
 
                 print("Loading the best validation model!")
-                self.model.load_state_dict(torch.load(cv_path+'/'+'final_best_vali.pth'))
+                self.model.load_state_dict(torch.load(cv_path + '/' + 'final_best_vali.pth'))
                 #model.eval()
                 test_loss , test_acc, test_f_w,  test_f_macro,  test_f_micro = self.validation(self.model, test_loader, criterion, iter+1)
 
