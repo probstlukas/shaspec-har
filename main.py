@@ -62,6 +62,8 @@ parser.add_argument('--seed', dest='seed', default=1, type=int,  help='Set the t
 
 parser.add_argument('--data-name', dest='data_name', default= None, type=str, help='Set the dataset name')
 
+parser.add_argument('--wavelet-filtering', dest='wavelet_filtering', action='store_true', help='Whether to use wavelet filtering to prepare the date')
+
 parser.add_argument('--difference', dest='difference', action='store_true', help='Whether to use difference')
 parser.add_argument('--filtering', dest='filtering', action='store_true', help='Whether to use filtering')
 parser.add_argument('--magnitude', dest='magnitude', action='store_true', help='Whether to use magnitude')
