@@ -25,6 +25,7 @@ import os
 
 from tqdm import tqdm
 import json
+from math import ceil
 
 class MixUpLoss(nn.Module):
     """
@@ -97,7 +98,7 @@ class Exp(object):
     def _select_optimizer(self):
         if self.args.optimizer not in self.optimizer_dict.keys():
             raise NotImplementedError
-        model_optim = self.optimizer_dict[self.args.optimizer](self.model.parameters(), lr=self.args.learning_rate)
+        model_optim = self.optimizer_dict[self.args.optimizer](self.model.parameters(), lr=self.args.learning_rate, weight_decay=self.args.weight_decay)
         return model_optim
 
     def _select_criterion(self):
@@ -131,21 +132,20 @@ class Exp(object):
             
             num_modalities = self.args.num_modalities
             miss_rate = self.args.miss_rate
-            # shapes = [arr[0].shape for arr in batch]
-            # print(shapes)
 
             # Calculate the number of modalities to omit
-            modalities_to_omit = int(miss_rate * num_modalities)
-
+            modalities_to_omit = ceil(miss_rate * num_modalities)
             batch_x = []
             batch_y  = []
             missing_indices = np.random.choice(num_modalities, modalities_to_omit, replace=False)
 
             # Collect batch
             for x, _, z in batch:
+                
                 batch_x.append(x)
                 batch_y.append(z)
 
+        
             batch_x = torch.tensor(np.concatenate(batch_x, axis=0))
             batch_y = torch.tensor(batch_y)
             
@@ -160,30 +160,20 @@ class Exp(object):
             if self.args.model_type == "shaspec":
                 # Split the tensor into the number of modalities and convert to list
                 batch_x = list(torch.tensor_split(batch_x, self.args.num_modalities, dim=3))
-                # print(batch_x[0].shape)
-                # print(len(batch_x))
 
                 # Setting the omitted modalities to NaN (or zero)
                 for index in missing_indices:
                     # Ensure the tensor at the omitted modality index is filled with NaN
                     batch_x[index] = torch.full_like(batch_x[index], float('nan'))
-                    # print("Missing modality: ", batch_x[index])
             else:
                 # Setting the omitted modalities to NaN (or zero)
                 for index in missing_indices:
-                    print("Index:", index)
-                    print("From: ", index * self.args.c_in)
-                    print("To: ", (index+1) * self.args.c_in)
                     from_index = index * self.args.c_in
                     to_index = (index + 1) * self.args.c_in
                     # Ensure the tensor at the omitted modality index is filled with NaN
                     batch_x[:, :, :, from_index:to_index] = torch.full_like(batch_x[:, :, :, from_index:to_index], float('nan'))
-                    print("Missing modality: ", batch_x[:, :, :, from_index:to_index])
-                    print("Available modalities: ", batch_x)
-                    print("Batch shape after missing modality: ", batch_x.shape)
                 pass
             
-
             return batch_x, batch_y, missing_indices
         # else:
         #     collate_fn = None
@@ -213,22 +203,15 @@ class Exp(object):
 
 
     def get_setting_name(self):
-        if self.args.model_type in ["deepconvlstm", "deepconvlstm_attn", "mcnn", "attend", "sahar", "tinyhar", "shaspec"]:
-            setting = "model_{}_data_{}_seed_{}_differencing_{}_Seperation_{}_magnitude_{}_Mixup_{}_RandomAug_{}_Scaling_{}_Mixupargmax_{}_MissRate_{}".format(
-                                                                                                                        self.args.model_type,
-                                                                                                                         self.args.data_name,
-                                                                                                                         self.args.seed,
-                                                                                                                         self.args.difference,
-                                                                                                                         self.args.filtering,
-                                                                                                                         self.args.magnitude,
-
-                                                                                                                         self.args.mixup_probability,
-
-                                                                                                                        self.args.random_augmentation_prob,
-                                                                                                                        self.args.filter_scaling_factor,
-                                                                                                                        self.args.mixup_argmax,
-                                                                                                                        self.args.miss_rate)
-
+        if self.args.model_type == "shaspec":
+            setting = "model_{}_data_{}_seed_{}_miss_rate_{}_use_shared_encoder_{}_use_missing_modality_features_{}".format(
+                self.args.model_type,
+                self.args.data_name,
+                self.args.seed, 
+                self.args.miss_rate, 
+                self.args.use_shared_encoder,
+                self.args.use_missing_modality_features 
+                )
             return setting
         else:
             raise NotImplementedError
@@ -350,14 +333,16 @@ class Exp(object):
             'learning_rate_patience': self.args.learning_rate_patience,
             'learning_rate_factor': self.args.learning_rate_factor,
             'early_stop_patience': self.args.early_stop_patience,
+            'weight_decay': self.args.weight_decay,
             'use_gpu': self.args.use_gpu,
             'gpu': self.args.gpu,
             'use_multi_gpu': self.args.use_multi_gpu,
             'optimizer': self.args.optimizer,
             'criterion': self.args.criterion,
             'activation': self.args.activation,
-            'decoder': self.args.decoder_type,
             'shared_encoder_type': self.args.shared_encoder_type,
+            'use_shared_encoder': self.args.use_shared_encoder,
+            'use_missing_modality_features': self.args.use_missing_modality_features,
             'sampling_freq': self.args.sampling_freq,
             'num_classes': self.args.num_classes,
             'num_modalities': self.args.num_modalities,
@@ -365,8 +350,8 @@ class Exp(object):
             'selected miss_rate': self.args.miss_rate,
             'windowsize': self.args.windowsize,
             'input_length': self.args.input_length,
-            'c_in': self.args.c_in,
-            'f_in': self.args.f_in
+            'c_in_per_mod': self.args.c_in_per_mod,
+            'f_in': self.args.f_in,
         }
 
         torch.manual_seed(self.args.seed)
@@ -387,6 +372,9 @@ class Exp(object):
         # Write the configuration settings to a file
         with open(config_file_name, 'w') as config_file:
             json.dump(config_dict, config_file, indent=4)
+
+        # Initialize a list to hold scores for each fold
+        cv_scores = []
 
         for iter in range(num_of_cv):
             torch.manual_seed(self.args.seed)
@@ -521,6 +509,9 @@ class Exp(object):
                 self.model.load_state_dict(torch.load(cv_path+'/'+'final_best_vali.pth'))
                 #model.eval()
                 test_loss , test_acc, test_f_w,  test_f_macro,  test_f_micro = self.validation(self.model, test_loader, criterion, iter+1)
+
+                cv_scores.append((test_loss, test_acc, test_f_w, test_f_macro, test_f_micro))
+
                 print(f"Final Test Performance : Test Accuracy: {test_acc:.7f}  Test weighted F1: {test_f_w:.7f}  Test macro F1 {test_f_macro:.7f}")
                 epoch_log.write(f"Final Test Performance : Test Loss: {test_loss:.7f}  Test Accuracy: {test_acc:.7f}  Test weighted F1: {test_f_w:.7f}  Test macro F1 {test_f_macro:.7f}  Test micro F1: {test_f_micro:.7f}\n")
                 epoch_log.flush()
@@ -579,7 +570,7 @@ class Exp(object):
 
                     early_stopping        = EarlyStopping(patience=15, verbose=True)
                     learning_rate_adapter = adjust_learning_rate_class(self.args,True)
-                    model_optim           = optim.Adam(new_model.parameters(), lr=0.0001, weight_decay=0.01)
+                    model_optim           = optim.Adam(new_model.parameters(), lr=self.args.learning_rate, weight_decay=self.args.weight_decay)
                     criterion             = nn.CrossEntropyLoss(reduction="mean").to(self.device)
                     for epoch in range(self.args.train_epochs):
                         train_loss = []
@@ -652,6 +643,17 @@ class Exp(object):
         with open(config_file_name, 'w') as config_file:
             json.dump(config_dict, config_file, indent=4)
 
+        cv_scores = np.array(cv_scores)
+
+        if cv_scores.size > 0:
+            # Calculate mean and standard deviation for each metric, including test_loss
+            mean_scores = np.mean(cv_scores, axis=0)
+            std_scores = np.std(cv_scores, axis=0)
+
+            with open(score_log_file_name, "a") as score_log:
+                score_log.write("\n")
+                score_log.write(f"MEAN Test Loss: {mean_scores[0]:.7f}, Test Accuracy: {mean_scores[1]:.7f}, Test weighted F1: {mean_scores[2]:.7f}, Test macro F1: {mean_scores[3]:.7f}, Test micro F1: {mean_scores[4]:.7f}\n")
+                score_log.write(f"STD Test Loss: {std_scores[0]:.7f}, Test Accuracy: {std_scores[1]:.7f}, Test weighted F1: {std_scores[2]:.7f}, Test macro F1: {std_scores[3]:.7f}, Test micro F1: {std_scores[4]:.7f}\n")
         
 
     def prediction_test(self):
