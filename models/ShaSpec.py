@@ -3,6 +3,7 @@ import torch.nn as nn # For torch.nn.Module, the parent object for PyTorch model
 from models.Attend import SelfAttention # For the self-attention mechanism
 from math import ceil # For rounding up the number of available modalities
 
+
 class BaseEncoder(nn.Module):
     def __init__(self, input_shape, filter_num, filter_size, activation, sa_div):
         super(BaseEncoder, self).__init__()
@@ -15,13 +16,13 @@ class BaseEncoder(nn.Module):
         """
         # Halving the length with each convolutional layer in the sequential container
         self.conv_layers = nn.Sequential(
-            nn.Conv2d(input_shape[1], filter_num, (filter_size, 1), stride=(2, 1)),
+            nn.Conv2d(input_shape[1], filter_num, (filter_size, 1), stride = (2, 1)),
             self.get_activation(activation),
-            nn.Conv2d(filter_num, filter_num, (filter_size, 1), stride=(2, 1)),
+            nn.Conv2d(filter_num, filter_num, (filter_size, 1), stride = (2, 1)),
             self.get_activation(activation),
-            nn.Conv2d(filter_num, filter_num, (filter_size, 1), stride=(2, 1)),
+            nn.Conv2d(filter_num, filter_num, (filter_size, 1), stride = (2, 1)),
             self.get_activation(activation),
-            nn.Conv2d(filter_num, filter_num, (filter_size, 1), stride=(2, 1)),
+            nn.Conv2d(filter_num, filter_num, (filter_size, 1), stride = (2, 1)),
             self.get_activation(activation)
         )
 
@@ -277,7 +278,6 @@ class ShaSpec(nn.Module):
         print("Number of available modalities: ", self.num_available_modalities)
         print("Use shared encoder: ", self.use_shared_encoder)
         print("Use missing modality features: ", self.use_missing_modality_features)
-        print("=" * 16, " ShaSpec Model Configuration ", "=" * 16)
 
         # Individual specific encoders
         self.specific_encoders = nn.ModuleList([SpecificEncoder(input_shape, self.filter_num, self.filter_size, activation, self.sa_div) for _ in range(self.num_available_modalities)])

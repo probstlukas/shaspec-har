@@ -8,18 +8,18 @@ import numpy as np
 import time
 from dataloaders import data_dict,data_set
 from sklearn.metrics import confusion_matrix
-# import models
+# Import models
 from models.model_builder import model_builder
 
 from torch.utils.data.sampler import WeightedRandomSampler
 from sklearn.metrics import accuracy_score
 from sklearn.metrics import f1_score
-from utils import EarlyStopping, adjust_learning_rate_class
+from utils import MixUpLoss, EarlyStopping, adjust_learning_rate_class
 
 from datetime import datetime
 import matplotlib.pyplot as plt
 import seaborn as sns
-from dataloaders.augmentation import RandomAugment, mixup_data
+from dataloaders.augmentation import RandomAugment
 import random
 import os
 
@@ -27,40 +27,6 @@ from tqdm import tqdm
 import json
 from math import ceil
 
-class MixUpLoss(nn.Module):
-    """
-    Mixup implementation heavily borrowed from https://github.com/fastai/fastai/blob/master/fastai/callbacks/mixup.py#L42
-    Adapt the loss function `crit` to go with mixup.
-    """
-
-    def __init__(self, crit, reduction='mean'):
-        super().__init__()
-        if hasattr(crit, 'reduction'):
-            self.crit = crit
-            self.old_red = crit.reduction
-            setattr(self.crit, 'reduction', 'none')
-        self.reduction = reduction
-
-    def forward(self, output, target):
-        if len(target.size()) == 2:
-            loss1, loss2 = self.crit(output, target[:, 0].long()), self.crit(output, target[:, 1].long())
-            d = loss1 * target[:, 2] + loss2 * (1 - target[:, 2])
-        else:
-            d = self.crit(output, target)
-        if self.reduction == 'mean':
-            return d.mean()
-        elif self.reduction == 'sum':
-            return d.sum()
-        return d
-
-    def get_old(self):
-        if hasattr(self, 'old_crit'):
-            return self.old_crit
-        elif hasattr(self, 'old_red'):
-            setattr(self.crit, 'reduction', self.old_red)
-            return self.crit
-        
-    
 
 class Exp(object):
     def __init__(self, args):
@@ -77,7 +43,6 @@ class Exp(object):
         print("Done!")
         self.args.model_size = np.sum([para.numel() for para in self.model.parameters() if para.requires_grad])
         print("Parameter:", self.args.model_size)
-
 
         print("Set the seed as: ", self.args.seed)
 
@@ -107,7 +72,7 @@ class Exp(object):
         criterion = self.criterion_dict[self.args.criterion]()
         return criterion
 
-    # 
+
     def _get_data(self, data, flag="train", weighted_sampler = False):
         """
         Get the data loader
@@ -127,7 +92,7 @@ class Exp(object):
         # if flag == "train":
         def collate_fn(batch):
             """
-            
+            Collates the batch of data.
             """
             
             num_modalities = self.args.num_modalities
@@ -141,42 +106,24 @@ class Exp(object):
 
             # Collect batch
             for x, _, z in batch:
-                
                 batch_x.append(x)
                 batch_y.append(z)
-
         
             batch_x = torch.tensor(np.concatenate(batch_x, axis=0))
             batch_y = torch.tensor(batch_y)
             
-            # if np.random.uniform(0,1,1)[0] >= self.args.mixup_probability:
+            # Reshape the tensor to the correct shape
+            batch_x = torch.unsqueeze(batch_x, 1)
 
-            #     batch_x , batch_y = mixup_data(batch_x , batch_y,   self.args.mixup_alpha,  argmax = self.args.mixup_argmax)
-                #print("Mixup",batch_x1.shape,batch_y.shape)
-            #else:
-                #print(batch_x1.shape,batch_y.shape)
-            batch_x = torch.unsqueeze(batch_x,1)
+            # Split the tensor into the number of modalities and convert to list
+            batch_x = list(torch.tensor_split(batch_x, self.args.num_modalities, dim=3))
 
-            if self.args.model_type == "shaspec":
-                # Split the tensor into the number of modalities and convert to list
-                batch_x = list(torch.tensor_split(batch_x, self.args.num_modalities, dim=3))
-
-                # Setting the omitted modalities to NaN (or zero)
-                for index in missing_indices:
-                    # Ensure the tensor at the omitted modality index is filled with NaN
-                    batch_x[index] = torch.full_like(batch_x[index], float('nan'))
-            else:
-                # Setting the omitted modalities to NaN (or zero)
-                for index in missing_indices:
-                    from_index = index * self.args.c_in
-                    to_index = (index + 1) * self.args.c_in
-                    # Ensure the tensor at the omitted modality index is filled with NaN
-                    batch_x[:, :, :, from_index:to_index] = torch.full_like(batch_x[:, :, :, from_index:to_index], float('nan'))
-                pass
+            # Setting the omitted modalities to NaN (or zero)
+            for index in missing_indices:
+                # Ensure the tensor at the omitted modality index is filled with NaN
+                batch_x[index] = torch.full_like(batch_x[index], float('nan'))
             
             return batch_x, batch_y, missing_indices
-        # else:
-        #     collate_fn = None
 
         if weighted_sampler and flag == 'train':
 
@@ -186,7 +133,6 @@ class Exp(object):
 
             data_loader = DataLoader(data, 
                                      batch_size   =  self.args.batch_size,
-                                     #shuffle      =  shuffle_flag,
                                      num_workers  =  0,
                                      sampler=sampler,
                                      drop_last    =  False,
@@ -215,90 +161,6 @@ class Exp(object):
             return setting
         else:
             raise NotImplementedError
-        # if self.args.model_type == "deepconvlstm":
-        #     config_file = open('../../configs/model.yaml', mode='r')
-        #     config = yaml.load(config_file, Loader=yaml.FullLoader)["deepconvlstm"]
-        #     setting = "deepconvlstm_data_{}_seed_{}_windowsize_{}_waveFilter_{}_Fscaling_{}_cvfilter_{}_lstmfilter_{}_Regu_{}_wavelearnble_{}".format(self.args.data_name,
-        #                                                                                                                                                 self.args.seed,
-        #                                                                                                                                                 self.args.windowsize,
-        #                                                                                                                                                 self.args.wavelet_filtering,
-        #                                                                                                                                                 self.args.filter_scaling_factor,
-        #                                                                                                                                                 config["nb_filters"],
-        #                                                                                                                                                 config["nb_units_lstm"],
-        #                                                                                                                                                 self.args.wavelet_filtering_regularization,
-        #                                                                                                                                                 self.args.wavelet_filtering_learnable )
-        #     return setting
-
-        # if self.args.model_type == "deepconvlstm_attn":
-        #     config_file = open('../../configs/model.yaml', mode='r')
-        #     config = yaml.load(config_file, Loader=yaml.FullLoader)["deepconvlstm_attn"]
-        #     setting = "deepconvlstm_attn_data_{}_seed_{}_windowsize_{}_waveFilter_{}_Fscaling_{}_cvfilter_{}_lstmfilter_{}_Regu_{}_wavelearnble_{}".format(self.args.data_name,
-        #                                                                                                                                                   self.args.seed,
-        #                                                                                                                                                   self.args.windowsize,
-        #                                                                                                                                                   self.args.wavelet_filtering,
-        #                                                                                                                                                   self.args.filter_scaling_factor,
-        #                                                                                                                                                   config["nb_filters"],
-        #                                                                                                                                                   config["nb_units_lstm"],
-        #                                                                                                                                                   self.args.wavelet_filtering_regularization,
-        #                                                                                                                                                   self.args.wavelet_filtering_learnable )
-        #     return setting
-
-
-        # if self.args.model_type == "mcnn":
-        #     config_file = open('../../configs/model.yaml', mode='r')
-        #     config = yaml.load(config_file, Loader=yaml.FullLoader)["mcnn"]
-        #     setting = "mcnn_data_{}_seed_{}_windowsize_{}_waveFilter_{}_Fscaling_{}_cvfilter_{}_Regu_{}_wavelearnble_{}".format(self.args.data_name,
-        #                                                                                                                                       self.args.seed,
-        #                                                                                                                                       self.args.windowsize,
-        #                                                                                                                                       self.args.wavelet_filtering,
-        #                                                                                                                                       self.args.filter_scaling_factor,
-        #                                                                                                                                       config["nb_filters"],
-        #                                                                                                                                       self.args.wavelet_filtering_regularization,
-        #                                                                                                                                       self.args.wavelet_filtering_learnable )
-        #     return setting
-
-        # elif self.args.model_type == "attend":
-        #     config_file = open('../../configs/model.yaml', mode='r')
-        #     config = yaml.load(config_file, Loader=yaml.FullLoader)["attend"]
-        #     setting = "attend_data_{}_seed_{}_windowsize_{}_waveFilter_{}_Fscaling_{}_cvfilter_{}_grufilter_{}_Regu_{}_wavelearnble_{}".format(self.args.data_name,
-        #                                                                                                                                        self.args.seed,
-        #                                                                                                                                        self.args.windowsize,
-        #                                                                                                                                        self.args.wavelet_filtering,
-        #                                                                                                                                        self.args.filter_scaling_factor,
-        #                                                                                                                                        config["filter_num"],
-        #                                                                                                                                        config["hidden_dim"],
-        #                                                                                                                                        self.args.wavelet_filtering_regularization,
-        #                                                                                                                                        self.args.wavelet_filtering_learnable)
-        #     return setting
-        # elif self.args.model_type == "sahar":
-        #     config_file = open('../../configs/model.yaml', mode='r')
-        #     config = yaml.load(config_file, Loader=yaml.FullLoader)["sahar"]
-        #     setting = "sahar_data_{}_seed_{}_windowsize_{}_waveFilter_{}_Fscaling_{}_cvfilter_{}_grufilter_{}_Regu_{}_wavelearnble_{}".format(self.args.data_name,
-        #                                                                                                                                       self.args.seed,
-        #                                                                                                                                       self.args.windowsize,
-        #                                                                                                                                       self.args.wavelet_filtering,
-        #                                                                                                                                       self.args.filter_scaling_factor,
-        #                                                                                                                                       config["nb_filters"],
-        #                                                                                                                                       None,
-        #                                                                                                                                       self.args.wavelet_filtering_regularization,
-        #                                                                                                                                       self.args.wavelet_filtering_learnable)
-        #     return setting
-        # elif self.args.model_type == "tinyhar":
-        #     config_file = open('../../configs/model.yaml', mode='r')
-        #     config = yaml.load(config_file, Loader=yaml.FullLoader)["tinyhar"]
-        #     setting = "tinyhar_data_{}_seed_{}_windowsize_{}_cvfilter_{}_CI_{}_CA_{}_TI_{}_TA_{}".format(self.args.data_name,
-        #                                                                                                 self.args.seed,
-        #                                                                                                 self.args.windowsize,
-        #                                                                                                 config["filter_num"],
-        #                                                                                                 self.args.cross_channel_interaction_type,
-        #                                                                                                 self.args.cross_channel_aggregation_type,
-        #                                                                                                 self.args.temporal_info_interaction_type,
-        #                                                                                                 self.args.temporal_info_aggregation_type )
-        #     return setting
-        # else:
-        #     raise NotImplementedError
-
-
 
     def update_gamma(self ):
         for n, parameter in self.model.named_parameters():
@@ -351,7 +213,7 @@ class Exp(object):
             'windowsize': self.args.windowsize,
             'input_length': self.args.input_length,
             'c_in_per_mod': self.args.c_in_per_mod,
-            'f_in': self.args.f_in,
+            'f_in': self.args.f_in
         }
 
         torch.manual_seed(self.args.seed)
@@ -399,7 +261,7 @@ class Exp(object):
             train_loader = self._get_data(dataset, flag = 'train', weighted_sampler = self.args.weighted_sampler)
             val_loader = self._get_data(dataset, flag = 'vali', weighted_sampler = self.args.weighted_sampler)
             test_loader   = self._get_data(dataset, flag = 'test', weighted_sampler = self.args.weighted_sampler)
-            #class_weights=torch.tensor(dataset.act_weights,dtype=torch.double).to(self.device)
+            
             train_steps = len(train_loader)
 
             if not os.path.exists(cv_path):
@@ -438,10 +300,6 @@ class Exp(object):
                 learning_rate_adapter = adjust_learning_rate_class(self.args,True)
                 model_optim = self._select_optimizer()
 
-                #if self.args.weighted == True:
-                #    criterion =  nn.CrossEntropyLoss(reduction="mean",weight=class_weights).to(self.device)#self._select_criterion()
-                #else:
-                #    criterion =  nn.CrossEntropyLoss(reduction="mean").to(self.device)#self._select_criterion()
                 criterion =  nn.CrossEntropyLoss(reduction="mean").to(self.device)
                 criterion = MixUpLoss(criterion)
 
@@ -522,113 +380,6 @@ class Exp(object):
                 epoch_log.close()
                 score_log.close()
 
-            # ------------------------------ code for  regularization and fine tuning -----------------------------------------------------------------
-
-            if self.args.wavelet_filtering_finetuning:
-                finetuned_score_log_file_name = os.path.join(self.path, "finetuned_score.txt")
-                if skip_finetuning:
-                    print("=" * 16, " Skip the {iter} CV Experiment Fine Tuning ", "=" * 16)
-                else:
-                    # thre_index : selected number
-                    epoch_log = open(epoch_log_file_name, "a")
-                    epoch_log.write("----------------------------------------------------------------------------------------\n")
-                    epoch_log.write("--------------------------------------Fine Tuning-----------------------------------------\n")
-                    epoch_log.write("----------------------------------------------------------------------------------------\n")
-
-                    self.model  = self.build_model().to(self.device)
-                    self.model.load_state_dict(torch.load(cv_path+'/'+'final_best_vali.pth'))
-
-                    finetuned_score_log = open(finetuned_score_log_file_name, "a")
-
-                    thre_index             = int(self.args.f_in * self.args.wavelet_filtering_finetuning_percent)-1
-                    gamma_weight           = self.model.gamma.squeeze().abs().clone()
-                    sorted_gamma_weight, i = torch.sort(gamma_weight,descending=True)
-                    threshold              = sorted_gamma_weight[thre_index]
-                    mask                   = gamma_weight.data.gt(threshold).float().to(self.device)
-                    idx0                   = np.squeeze(np.argwhere(np.asarray(mask.cpu().numpy())))
-                    # build the new model
-                    new_model              = model_builder(self.args, input_f_channel = thre_index).to(self.device)
-
-                    print("=" * 16, " Fine Tuning  : ", self.args.f_in-thre_index,"  will be pruned ", "=" * 16)
-                    print("Old model parameter :", self.model_size)
-                    print("Pruned model parameter :", np.sum([para.numel() for para in new_model.parameters()]))
-                    print("=" * 64)
-
-                    # Copy the weights
-                    flag_channel_selection = False
-                    for n,p in new_model.named_parameters():
-                        if "wavelet_conv" in n:
-                            p.data = self.model.state_dict()[n].data[idx0.tolist(), :,:,:].clone()
-                        elif n == "gamma":
-                            flag_channel_selection = True
-                            p.data = self.model.state_dict()[n].data[:, idx0.tolist(),:,:].clone()
-                        elif flag_channel_selection and "conv" in n:
-                            p.data = self.model.state_dict()[n].data[:, idx0.tolist(),:,:].clone()
-                            flag_channel_selection = False
-                        else:
-                            p.data = self.model.state_dict()[n].data.clone()
-
-                    early_stopping        = EarlyStopping(patience=15, verbose=True)
-                    learning_rate_adapter = adjust_learning_rate_class(self.args,True)
-                    model_optim           = optim.Adam(new_model.parameters(), lr=self.args.learning_rate, weight_decay=self.args.weight_decay)
-                    criterion             = nn.CrossEntropyLoss(reduction="mean").to(self.device)
-                    for epoch in range(self.args.train_epochs):
-                        train_loss = []
-                        new_model.train()
-                        epoch_time = time.time()
-
-                        for (batch_x,batch_y,missing_indices) in train_loader:
-                            # batch_x = batch_x.double().to(self.device)
-                            batch_x = [x.double().to(self.device) for x in batch_x]
-                            batch_y = batch_y.long().to(self.device)
-
-                            
-                            outputs = new_model(batch_x, missing_indices)
-                            
-
-                            loss = criterion(outputs, batch_y)
-
-                            train_loss.append(loss.item())
-
-                            model_optim.zero_grad()
-                            loss.backward()
-                            model_optim.step()
-
-                        print(f"Fine Tuning Epoch: {epoch+1} cost time: {time.time()-epoch_time}")
-                        epoch_log.write("Fine Tuning Epoch: {} cost time: {}".format(epoch+1, time.time()-epoch_time))
-                        epoch_log.write("\n")
-
-                        train_loss = np.average(train_loss)
-                        vali_loss , vali_acc, vali_f_w,  vali_f_macro, vali_f_micro = self.validation(new_model, val_loader, criterion)
-
-                        print(f"Fine Tuning VALI: Epoch: {epoch + 1}, Steps: {train_steps} | Train Loss: {train_loss:.7f} Vali Loss: {vali_loss:.7f} Vali Accuracy: {vali_acc:.7f} Vali weighted F1: {vali_f_w:.7f} Vali macro F1 {vali_f_macro:.7f}")
-
-                        epoch_log.write("Fine Tuning VALI: Epoch: {0}, Steps: {1} | Train Loss: {2:.7f}  Vali Loss: {3:.7f} Vali Accuracy: {4:.7f}  Vali weighted F1: {5:.7f}  Vali macro F1 {6:.7f} \n".format(
-                            epoch + 1, train_steps, train_loss, vali_loss, vali_acc, vali_f_w, vali_f_macro))
-
-                        early_stopping(vali_loss, new_model, cv_path, vali_f_macro, vali_f_w, epoch_log)
-                        if early_stopping.early_stop:
-                            print("Early stopping")
-                            break
-                        epoch_log.write("----------------------------------------------------------------------------------------\n")
-                        epoch_log.flush()
-                        learning_rate_adapter(model_optim,vali_loss)
-                    # rename the best_vali to final_best_vali
-                    os.rename(cv_path+'/'+'best_vali.pth', cv_path+'/'+'final_finetuned_best_vali.pth')
-
-                    print("Loading the best finetuned validation model!")
-                    new_model.load_state_dict(torch.load(cv_path+'/'+'final_finetuned_best_vali.pth'))
-
-                    test_loss , test_acc, test_f_w,  test_f_macro,  test_f_micro = self.validation(new_model, test_loader, criterion)
-                    print(f"Fine Tuning Final Test Performance : Test Accuracy: {test_acc:.7f}  Test weighted F1: {test_f_w:.7f}  Test macro F1 {test_f_macro:.7f}")
-                    epoch_log.write("Final Test Performance : Test weighted F1: {0:.7f}  Test macro F1 {1:.7f}\n\n\n\n\n\n\n\n".format(test_f_w, test_f_macro))
-                    epoch_log.flush()
-
-                    finetuned_score_log.write("Test weighted F1: {0:.7f}  Test macro F1 {1:.7f}\n".format(test_f_w, test_f_macro))
-                    finetuned_score_log.flush()
-
-                    epoch_log.close()
-                    finetuned_score_log.close()
         end_time = time.time()
         training_duration_hours = (end_time - start_time) / 3600
 
@@ -645,6 +396,7 @@ class Exp(object):
 
         cv_scores = np.array(cv_scores)
 
+        # Check if at least one CV fold has been performed
         if cv_scores.size > 0:
             # Calculate mean and standard deviation for each metric, including test_loss
             mean_scores = np.mean(cv_scores, axis=0)
@@ -656,48 +408,10 @@ class Exp(object):
                 score_log.write(f"STD Test Loss: {std_scores[0]:.7f}, Test Accuracy: {std_scores[1]:.7f}, Test weighted F1: {std_scores[2]:.7f}, Test macro F1: {std_scores[3]:.7f}, Test micro F1: {std_scores[4]:.7f}\n")
         
 
-    def prediction_test(self):
-        print("PREDICTION TEST")
-        assert self.args.exp_mode == "Given"
-        model = self.build_model().to(self.device)
-        model.load_state_dict(torch.load(os.path.join(self.path,'cv_0/best_vali.pth')))
-        model.eval()
-        dataset = data_dict[self.args.data_name](self.args)
-        dataset.update_train_val_test_keys()
-        test_loader   = self._get_data(dataset, flag = 'test')
-        preds = []
-        trues = []
-        for i, (batch_x1,batch_x2,batch_y) in enumerate(test_loader):
-            if "cross" in self.args.model_type:
-                batch_x1 = batch_x1.double().to(self.device)
-                batch_x2 = batch_x2.double().to(self.device)
-                batch_y = batch_y.long().to(self.device)
-                # model prediction
-                if self.args.output_attention:
-                    outputs = self.model(batch_x1,batch_x2)[0]
-                else:
-                    outputs = self.model(batch_x1,batch_x2)
-            else:
-                batch_x1 = batch_x1.double().to(self.device)
-                batch_y = batch_y.long().to(self.device)
-
-                # model prediction
-                if self.args.output_attention:
-                    outputs = self.model(batch_x1)[0]
-                else:
-                    outputs = self.model(batch_x1)
-
-            preds.extend(list(np.argmax(outputs.detach().cpu().numpy(),axis=1)))
-            trues.extend(list(batch_y.detach().cpu().numpy())) 
-		
-        acc = accuracy_score(preds,trues)
-        f_w = f1_score(trues, preds, average='weighted')
-        f_macro = f1_score(trues, preds, average='macro')
-        f_micro = f1_score(trues, preds, average='micro')
-
-        return preds,trues
-
     def validation(self, model, data_loader, criterion, index_of_cv=None, selected_index = None):
+        """
+        Validation function for the model
+        """
         model.eval()
         total_loss = []
         preds = []
@@ -707,13 +421,11 @@ class Exp(object):
                 if selected_index is None:
                     batch_x = [x.double().to(self.device) for x in batch_x]
                 else:
-                    batch_x = batch_x[:, selected_index.tolist(),:,:].double().to(self.device)
+                    batch_x = batch_x[:, selected_index.tolist(), :, :].double().to(self.device)
                 batch_y = batch_y.long().to(self.device)
 
-                # model prediction
-                
+                # Model prediction
                 outputs = model(batch_x, missing_indices)
-                
 
                 pred = outputs.detach()#.cpu()
                 true = batch_y.detach()#.cpu()
@@ -726,25 +438,14 @@ class Exp(object):
 				
         total_loss = np.average(total_loss)
         acc = accuracy_score(preds,trues)
-        #f_1 = f1_score(trues, preds)
-#         print("------------------11111111111111---------------")
-#         import pickle
-#         with open('preds.pickle', 'wb') as handle:
-#             pickle.dump(preds, handle, protocol=pickle.HIGHEST_PROTOCOL)
-            
-#         with open('trues.pickle', 'wb') as handle:
-#             pickle.dump(trues, handle, protocol=pickle.HIGHEST_PROTOCOL)
-          
+        
         f_w = f1_score(trues, preds, average='weighted')
         f_macro = f1_score(trues, preds, average='macro')
         f_micro = f1_score(trues, preds, average='micro')
         if index_of_cv:
             cf_matrix = confusion_matrix(trues, preds)
-            #with open("{}.npy".format(index_of_cv), 'wb') as f:
-            #    np.save(f, cf_matrix)
             plt.figure()
             sns.heatmap(cf_matrix, annot=True)
-            #plt.savefig("{}.png".format(index_of_cv))
         model.train()
 
-        return total_loss,  acc, f_w,  f_macro, f_micro#, f_1
+        return total_loss,  acc, f_w,  f_macro, f_micro
