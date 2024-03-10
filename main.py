@@ -43,15 +43,16 @@ parser.add_argument('--sample-wise', dest='sample_wise', action='store_true', he
 parser.add_argument('--drop-transition', dest='drop_transition', action='store_true', help='weather to drop the transition part')
 
 # training config
-parser.add_argument('--batch-size', dest='batch_size', default=512, type=int,  help='Batch Size')
+parser.add_argument('--batch-size', dest='batch_size', default=2, type=int,  help='Batch Size')
 parser.add_argument('--shuffle', dest='shuffle', action='store_true', help='weather to shuffle the data')
 parser.add_argument('--drop-last', dest='drop_last', action='store_true', help='weather to drop the last mini batch ')
 parser.add_argument('--train-vali-quote', dest='train_vali_quote', type=float, default=0.9, help='Portion of training dataset')
-parser.add_argument('--train-epochs', dest='train_epochs', default=20, type=int,  help='Total Training Epochs')
+parser.add_argument('--train-epochs', dest='train_epochs', default=60, type=int,  help='Total Training Epochs')
 parser.add_argument('--learning-rate', dest='learning_rate', default=0.001, type=float,  help='set the initial learning rate')
-parser.add_argument('--learning-rate-patience', dest='learning_rate_patience', default=7, type=int,  help='patience for adjust the learning rate')
+parser.add_argument('--learning-rate-patience', dest='learning_rate_patience', default=20, type=int,  help='patience for adjust the learning rate')
 parser.add_argument('--early-stop-patience', dest='early_stop_patience', default=15, type=int,  help='patience for stop the training')
 parser.add_argument('--learning-rate-factor', dest='learning_rate_factor', default=0.1, type=float,  help='set the rate of adjusting learning rate')
+parser.add_argument('--weight-decay', dest='weight_decay', default=0.01, type=float,  help='set the weight decay')
 #parser.add_argument('--use-gpu', dest='use_gpu', action='store_true', help='weather to use gpu ')
 parser.add_argument('--use-multi-gpu', dest='use_multi_gpu', action='store_true', help='weather to use multi gpu ')
 parser.add_argument('--gpu', dest='gpu', default=0, type=int,  help='gpu id')
@@ -77,10 +78,10 @@ parser.add_argument('--magnitude', dest='magnitude', action='store_true', help='
 parser.add_argument('--weighted-sampler', dest='weighted_sampler', action='store_true', help='weather to use weighted_sampler ')
 parser.add_argument('--load-all', dest='load_all', action='store_true', help='weather to load all freq data ')
 parser.add_argument('--wavelet-function', dest='wavelet_function', default= None, type=str, help='Method to generate spectrogram')
-parser.add_argument('--mixup-probability', dest='mixup_probability', default=0.5, type=float,  help='set the prob to use mixup')
+parser.add_argument('--mixup-probability', dest='mixup_probability', default=1, type=float,  help='set the prob to use mixup')
 parser.add_argument('--mixup-alpha', dest='mixup_alpha', default=0.5, type=float,  help='set the mixup distribution')
 parser.add_argument('--mixup-argmax', dest='mixup_argmax', action='store_true', help='weather to use argmax ')
-parser.add_argument('--random-augmentation-prob', dest='random_augmentation_prob', default=0.5, type=float,  help='set the prob to use random prob')
+parser.add_argument('--random-augmentation-prob', dest='random_augmentation_prob', default=1, type=float,  help='set the prob to use random prob')
 parser.add_argument('--max-aug', dest='max_aug', default=3, type=int,  help='max number of random aug')
 
 
@@ -98,7 +99,7 @@ parser.add_argument('--temporal-info-interaction-type', dest='temporal_info_inte
 parser.add_argument('--temporal-info-aggregation-type', dest='temporal_info_aggregation_type', default= "tnaive", type=str, help='Set the temporal_info_aggregation_type type')
 
 # ShaSpec-specific
-parser.add_argument('--decoder-type', dest='decoder_type', default= "FC", type=str, help='Set the decoder_type type for the ShaSpec model')
+parser.add_argument('--activation', dest='activation', default= "ReLu", type=str, help='Set the activation function')
 parser.add_argument('--shared-encoder-type', dest='shared_encoder_type', default= "concatenated", type=str, help='Set the shared_encoder_type type for the ShaSpec model')
 parser.add_argument('--miss-rate', dest='miss_rate', default=0.0, type=float, help='Set the miss rate for modalities')
 parser.add_argument('--use-shared-encoder', dest='use_shared_encoder', default=True, type=bool, help='Whether the shared encoder should be used or not')
@@ -140,11 +141,16 @@ config = data_config[args.data_name]
 args.root_path       =  os.path.join(args.root_path,config["filename"])
 args.sampling_freq   =  config["sampling_freq"]
 args.num_classes     =  config["num_classes"]
+args.num_modalities  =  config["num_modalities"]
+args.miss_rates       =  config["miss_rates"]
 window_seconds       =  config["window_seconds"]
 args.windowsize      =  int(window_seconds * args.sampling_freq) 
 args.input_length    =  args.windowsize
 # input information
 args.c_in            =  config["num_channels"]
+# For ShaSpec we want the number of channels per modality
+args.c_in_per_mod    =  config["num_channels"] // args.num_modalities
+
 if args.difference:
     args.c_in  = args.c_in * 2
 if  args.filtering :
