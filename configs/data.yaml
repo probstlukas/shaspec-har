@@ -342,3 +342,131 @@ bosch:
   - rawAccelerometer_iPhone_acc_y
   - rawAccelerometer_iPhone_acc_z
   - WatchWorkout_HeartRate_AppleWatch_HeartRate
+
+realdisp:
+  filename: "REALDISP_Dataset"
+  sampling_freq: 50 # in Hz
+  num_classes: 33 # Activities
+  num_channels: 117 # All sensor channels
+  num_modalities: 9
+  miss_rates: [0.0, 0.1, 0.3, 0.5, 0.7]
+  window_seconds: 3 # Time each sample lasts
+  sensors:
+  - accX_LC
+  - accY_LC
+  - accZ_LC
+  - gyroX_LC
+  - gyroY_LC
+  - gyroZ_LC
+  - magX_LC
+  - magY_LC
+  - magZ_LC
+  - Q1_LC
+  - Q2_LC
+  - Q3_LC
+  - Q4_LC
+  - accX_LT
+  - accY_LT
+  - accZ_LT
+  - gyroX_LT
+  - gyroY_LT
+  - gyroZ_LT
+  - magX_LT
+  - magY_LT
+  - magZ_LT
+  - Q1_LT
+  - Q2_LT
+  - Q3_LT
+  - Q4_LT
+  - accX_RC
+  - accY_RC
+  - accZ_RC
+  - gyroX_RC
+  - gyroY_RC
+  - gyroZ_RC
+  - magX_RC
+  - magY_RC
+  - magZ_RC
+  - Q1_RC
+  - Q2_RC
+  - Q3_RC
+  - Q4_RC
+  - accX_RT
+  - accY_RT
+  - accZ_RT
+  - gyroX_RT
+  - gyroY_RT
+  - gyroZ_RT
+  - magX_RT
+  - magY_RT
+  - magZ_RT
+  - Q1_RT
+  - Q2_RT
+  - Q3_RT
+  - Q4_RT
+  - accX_BACK
+  - accY_BACK
+  - accZ_BACK
+  - gyroX_BACK
+  - gyroY_BACK
+  - gyroZ_BACK
+  - magX_BACK
+  - magY_BACK
+  - magZ_BACK
+  - Q1_BACK
+  - Q2_BACK
+  - Q3_BACK
+  - Q4_BACK
+  - accX_LLA
+  - accY_LLA
+  - accZ_LLA
+  - gyroX_LLA
+  - gyroY_LLA
+  - gyroZ_LLA
+  - magX_LLA
+  - magY_LLA
+  - magZ_LLA
+  - Q1_LLA
+  - Q2_LLA
+  - Q3_LLA
+  - Q4_LLA
+  - accX_LUA
+  - accY_LUA
+  - accZ_LUA
+  - gyroX_LUA
+  - gyroY_LUA
+  - gyroZ_LUA
+  - magX_LUA
+  - magY_LUA
+  - magZ_LUA
+  - Q1_LUA
+  - Q2_LUA
+  - Q3_LUA
+  - Q4_LUA
+  - accX_RLA
+  - accY_RLA
+  - accZ_RLA
+  - gyroX_RLA
+  - gyroY_RLA
+  - gyroZ_RLA
+  - magX_RLA
+  - magY_RLA
+  - magZ_RLA
+  - Q1_RLA
+  - Q2_RLA
+  - Q3_RLA
+  - Q4_RLA
+  - accX_RUA
+  - accY_RUA
+  - accZ_RUA
+  - gyroX_RUA
+  - gyroY_RUA
+  - gyroZ_RUA
+  - magX_RUA
+  - magY_RUA
+  - magZ_RUA
+  - Q1_RUA
+  - Q2_RUA
+  - Q3_RUA
+  - Q4_RUA
+  
