@@ -153,18 +153,16 @@ class model_builder(nn.Module):
             config_file = open('../../configs/model.yaml', mode='r')
             config = yaml.load(config_file, Loader=yaml.FullLoader)["shaspec"]
             self.model  = ShaSpec((1, f_in, self.args.input_length, self.args.c_in_per_mod),
-                                  self.args.num_modalities,
-                                  self.args.miss_rate,
-                                  self.args.num_classes,
-                                  filter_num = config["filter_num"],
-                                  filter_size = config["filter_size"],
-                                  sa_div = config["sa_div"],
-                                  activation=self.args.activation,
-                                  decoder_type = self.args.decoder_type, # FC ConvTrans
-                                  shared_encoder_type = self.args.shared_encoder_type # concatenated weighted
-                                  )
+                                self.args.num_modalities,
+                                self.args.miss_rate,
+                                self.args.num_classes,
+                                self.args.activation,
+                                self.args.shared_encoder_type, # concatenated weighted
+                                self.args.use_shared_encoder, # Ablation study 
+                                self.args.use_missing_modality_features,  # Ablation study
+                                config)
+            
             print("Build the ShaSpec model!")
-            print("Selected miss rate: ", self.args.miss_rate)
         else:
             self.model = Identity()
             print("Build the None model!")

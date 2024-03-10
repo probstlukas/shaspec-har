@@ -1,6 +1,7 @@
 import torch # For all things PyTorch
 import torch.nn as nn # For torch.nn.Module, the parent object for PyTorch models
 from models.Attend import SelfAttention # For the self-attention mechanism
+from math import ceil # For rounding up the number of available modalities
 
 class BaseEncoder(nn.Module):
     def __init__(self, input_shape, filter_num, filter_size, activation, sa_div):
@@ -225,21 +226,18 @@ class Decoder(nn.Module):
         number_class,
         num_of_sensor_channels,
         num_modalities,
-        filter_num,
-        decoder_type
+        filter_num
     ):
-        super(Decoder, self).__init__()
-        self.decoder_type = decoder_type
-        # Decoder
-        if decoder_type == "FC":
-            # Flatten all dimensions before FC-layer
-            self.flatten = nn.Flatten()
-            # 42 * 5 * 2
-            # C x 2F' = 42 * 5 * 2 = 420
-            # print("Filter num: ", filter_num)
-            # print("Num of sensor channels: ", num_of_sensor_channels)
-            # print("modalities num: ", num_modalities)
-            self.fc_layer = nn.Linear(2 * filter_num * num_of_sensor_channels * num_modalities, number_class)
+        super(Decoder, self).__init__()  
+        
+        # Flatten all dimensions before FC-layer
+        self.flatten = nn.Flatten()
+        # 42 * 5 * 2
+        # C x 2F' = 42 * 5 * 2 = 420
+        # print("Filter num: ", filter_num)
+        # print("Num of sensor channels: ", num_of_sensor_channels)
+        # print("modalities num: ", num_modalities)
+        self.fc_layer = nn.Linear(2 * filter_num * num_of_sensor_channels * num_modalities, number_class)
 
     def forward(self, concatenated_features):
         output = self.flatten(concatenated_features)
@@ -253,84 +251,91 @@ class Decoder(nn.Module):
 class ShaSpec(nn.Module):
     def __init__(
         self,
-        input,
+        input_shape,
         num_modalities,
         miss_rate,
         num_classes,
-        filter_num,
-        filter_size,
-        sa_div,
-        activation          = "ReLU", # ReLU Tanh
-        decoder_type        = "FC", # FC ConvTrans
-        shared_encoder_type = "concatenated" # concatenated weighted
-    ):
+        activation,
+        shared_encoder_type,
+        use_shared_encoder,
+        use_missing_modality_features,
+        config):
         super(ShaSpec, self).__init__()
 
-        # print("ShaSpec input shape: ", input)
-        # print("miss rate: ", miss_rate)
-        print("Filter num: ", filter_num)
-        self.num_of_sensor_channels = input[3]
-        self.shared_encoder_type = shared_encoder_type
+        self.filter_num = config["filter_num"]
+        self.filter_size = config["filter_size"]
+        self.sa_div = config["sa_div"]
+        self.use_shared_encoder = use_shared_encoder
+        self.use_missing_modality_features = use_missing_modality_features
+        self.num_of_sensor_channels = input_shape[3]
 
-        # print("==== ShaSpec Model ====")
-        # print("Num of modalities: ", num_modalities)
-        # print("Miss rate: ", miss_rate)
-        self.num_available_modalities = int(num_modalities * (1 - miss_rate))
-        # print("Num of available modalities: ", self.num_available_modalities)
+        print("=" * 16, " ShaSpec Model Configuration ", "=" * 16)
+        print("Number of total modalities: ", num_modalities)
+        print("Selected miss rate: ", miss_rate)
+        num_of_missing_modalities = ceil(num_modalities * miss_rate)
+        self.num_available_modalities = num_modalities - num_of_missing_modalities
+        print("Number of available modalities: ", self.num_available_modalities)
+        print("Use shared encoder: ", self.use_shared_encoder)
+        print("Use missing modality features: ", self.use_missing_modality_features)
+        print("=" * 16, " ShaSpec Model Configuration ", "=" * 16)
 
         # Individual specific encoders
-        self.specific_encoders = nn.ModuleList([SpecificEncoder(input, filter_num, filter_size, activation, sa_div) for _ in range(self.num_available_modalities)])
+        self.specific_encoders = nn.ModuleList([SpecificEncoder(input_shape, self.filter_num, self.filter_size, activation, self.sa_div) for _ in range(self.num_available_modalities)])
 
         # One shared encoder for all modalities
-        self.shared_encoder = SharedEncoder(self.num_available_modalities, input, filter_num, filter_size, activation, sa_div, shared_encoder_type)
+        self.shared_encoder = SharedEncoder(self.num_available_modalities, input_shape, self.filter_num, self.filter_size, activation, self.sa_div, shared_encoder_type)
 
-        self.residual_block = ResidualBlock(filter_num)
+        self.residual_block = ResidualBlock(self.filter_num)
 
         self.missing_modality_feature_generation = MissingModalityFeatureGeneration()
 
-        self.decoder = Decoder(num_classes, self.num_of_sensor_channels, num_modalities, filter_num, decoder_type)
+        self.decoder = Decoder(num_classes, self.num_of_sensor_channels, num_modalities, self.filter_num)
 
     def forward(self, x_list, missing_indices):
         """
-        x_list: List of tensors, each tensor represents a modality
-        missing_indices: List of indices of missing modalities
+        x_list: List of tensors, each tensor represents a modality (complete and missing modalities included)
+        missing_indices: List of indices for missing modalities
         """
-        # print("Available modalities: ", self.num_available_modalities)
-        # print("Input list: ", x_list)
-        # print("Missing index: ", missing_indices)
-
-        # Filter out missing modalities
+        
+        """ ================ Filter Out Missing Modalities ================"""
         available_indices = [modality for modality in range(len(x_list)) if modality not in missing_indices]
-        # print("Available indices: ", available_indices)
         available_modalities = [x_list[i] for i in available_indices]
-        # print("Available x list length: ", len(available_modalities))
-
+        """ ================ Specific Encoders ================"""
         # Process with specific encoders for available modalities
         specific_features = [self.specific_encoders[i](available_modalities[i]) for i in range(len(available_modalities))]    
-        # print("Specific features length: ", len(specific_features))
 
+        """ ================ Shared Encoder ================"""
+        if self.use_shared_encoder:
+            # Concatenate the modalities for shared processing
+            concatenated_inputs = torch.cat(available_modalities, dim=3)  # Adjust dim according to how you concatenate
+            shared_features = self.shared_encoder(concatenated_inputs)
 
+        """ ================ Fuse Specific and Shared Features ================"""
+        if self.use_shared_encoder:
+            # Fuse specific and shared features for available modalities
+            fused_features = []
+            for specific, shared in zip(specific_features, shared_features):
+                fused_feature = self.residual_block(specific, shared)
+                fused_features.append(fused_feature)
+        else:
+            fused_features = specific_features
 
-        # print("Available modality shape: ", available_modalities[0].shape)
-        # Concatenate the modalities for shared processing
-        concatenated_inputs = torch.cat(available_modalities, dim=3)  # Adjust dim according to how you concatenate
-        shared_features = self.shared_encoder(concatenated_inputs)
-        # print("Shared features shape: ", shared_features[0].shape)
-    
+        """ ================ Missing Modality Feature Generation ================"""
+        if self.use_shared_encoder and self.use_missing_modality_features:
+            # Reconstruct missing modalities using shared features
+            generated_features = self.missing_modality_feature_generation(shared_features, missing_indices)
 
-        # Fuse specific and shared features for available modalities
-        fused_features = []
-        for specific, shared in zip(specific_features, shared_features):
-            fused_feature = self.residual_block(specific, shared)
-            fused_features.append(fused_feature)
+            # Insert the reconstructed modalities back at their original positions into fused_features
+            for index, feature in sorted(zip(missing_indices, generated_features), key=lambda x: x[0]):
+                fused_features.insert(index, feature)
+        else:
+            # If missing modalities are not reconstructed, insert NaN at their original positions into fused_features
+            for index in sorted(missing_indices):
+                # fused_features.insert(index, torch.zeros_like(fused_features[0]))
+                fused_features.insert(index, torch.full_like(fused_features[0], float('nan')))
 
-        # Reconstruct missing modalities using shared features
-        generated_features = self.missing_modality_feature_generation(shared_features, missing_indices)
-
-        # Insert the reconstructed modalities back at their original positions into fused_features
-        for index, feature in sorted(zip(missing_indices, generated_features), key=lambda x: x[0]):
-            fused_features.insert(index, feature)
-
+        # print(fused_features)
+        """ ================ Decoder ================"""
         # Prepare for decoding
         concatenated_features = torch.cat(fused_features, dim=2)
 
