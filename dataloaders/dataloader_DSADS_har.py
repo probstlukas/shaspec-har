@@ -40,13 +40,13 @@ class DSADS_HAR_DATA(BASE_DATA):
         # amounted in 5 places "T", "RA", "LA", "RL", "LL"
         # In total 45 Channels
 		
-        self.used_cols = used_cols = [0,  1,  2,  3,  4,  5,  6,  7,  8,
+        self.used_cols = [0,  1,  2,  3,  4,  5,  6,  7,  8,
                                       9, 10, 11, 12, 13, 14, 15,  16, 17,
                                       18, 19, 20, 21, 22, 23, 24, 25, 26,
                                       27, 28, 29, 30, 31, 32, 33, 34, 35,
                                       36, 37, 38, 39, 40, 41, 42, 42, 44]
 
-        col_list       =  ["acc_x","acc_y","acc_z","gyro_x","gyro_y","gyro_z","mag_x","mag_y","mag_z"]
+        col_list       = ["acc_x","acc_y","acc_z","gyro_x","gyro_y","gyro_z","mag_x","mag_y","mag_z"]
         pos_list       = ["T", "RA", "LA", "RL", "LL"]
         self.col_names = [item for sublist in [[col+"_"+pos for col in col_list] for pos in pos_list] for item in sublist]
 
@@ -165,7 +165,7 @@ class DSADS_HAR_DATA(BASE_DATA):
         data_x = df_all.iloc[:,:-1]
 
         data_x = data_x.reset_index()
-        # sub_id, sensor1, sensor2... sensorn, sub, 
+        # sub_id, sensor1, sensor2... sensorN, sub, 
 
         return data_x, data_y
 

@@ -66,17 +66,20 @@ from .dataloader_DG_har import Daphnet_HAR_DATA
 from .dataloader_USCHAD_har import USC_HAD_HAR_DATA
 from .dataloader_WISDM_har import WISDM_HAR_DATA
 from .dataloader_Bosch_har import BOSCH_HAR_DATA
-data_dict = {"hapt"  : HAPT_HAR_DATA,
-             "ear"   : EAR_HAR_DATA,
-             "oppo"  : Opportunity_HAR_DATA,
-             "rw"    : REAL_WORLD_HAR_DATA,
-             "pamap2": PAMAP2_HAR_DATA,
-             "skodar": SkodaR_HAR_DATA,
-             "dsads" : DSADS_HAR_DATA,
-             "dg"    : Daphnet_HAR_DATA,
-             "uschad": USC_HAD_HAR_DATA,
-             "wisdm" : WISDM_HAR_DATA,
-             "bosch" : BOSCH_HAR_DATA}
+from .dataloader_REALDISP_har import REALDISP_HAR_DATA
+data_dict = {"hapt"     : HAPT_HAR_DATA,
+             "ear"      : EAR_HAR_DATA,
+             "oppo"     : Opportunity_HAR_DATA,
+             "rw"       : REAL_WORLD_HAR_DATA,
+             "pamap2"   : PAMAP2_HAR_DATA,
+             "skodar"   : SkodaR_HAR_DATA,
+             "dsads"    : DSADS_HAR_DATA,
+             "dg"       : Daphnet_HAR_DATA,
+             "uschad"   : USC_HAD_HAR_DATA,
+             "wisdm"    : WISDM_HAR_DATA,
+             "bosch"    : BOSCH_HAR_DATA,
+             "realdisp" : REALDISP_HAR_DATA
+             }
 
 class data_set(Dataset):
     def __init__(self, args, dataset, flag):

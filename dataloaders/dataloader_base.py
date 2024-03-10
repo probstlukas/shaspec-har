@@ -397,7 +397,7 @@ class BASE_DATA():
         Because of the large amount of data, it is not necessary to store all the contents of the slidingwindow, 
         but only to access the index of the slidingwindow
         Each window consists of three parts: sub_ID , start_index , end_index
-        The sub_ID ist used for train test split, if the subject train test split is applied
+        The sub_ID is used for train test split, if the subject train test split is applied
         """
         if os.path.exists(os.path.join(self.window_save_path,
                                        "{}_{}_drop_trans_{}_windowsize{}.pickle".format(self.data_name, 
