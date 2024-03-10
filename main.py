@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-#SBATCH --job-name=shaspec24
+#SBATCH --job-name=shaspec
 
 #SBATCH --error=%x.%j.err
 #SBATCH --output=%x.%j.out
