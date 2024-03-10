@@ -66,6 +66,8 @@ parser.add_argument('--difference', dest='difference', action='store_true', help
 parser.add_argument('--filtering', dest='filtering', action='store_true', help='Whether to use filtering')
 parser.add_argument('--magnitude', dest='magnitude', action='store_true', help='Whether to use magnitude')
 parser.add_argument('--weighted-sampler', dest='weighted_sampler', action='store_true', help='Whether to use weighted_sampler')
+parser.add_argument('--load-all', dest='load_all', action='store_true', help='Whether to load all freq data')
+parser.add_argument('--wavelet-function', dest='wavelet_function', default= None, type=str, help='Method to generate spectrogram')
 parser.add_argument('--mixup-alpha', dest='mixup_alpha', default=0.5, type=float,  help='Set the mixup distribution')
 
 parser.add_argument('--representation-type', dest='representation_type', default= "time", type=str, help='Set the data type')
