@@ -82,8 +82,8 @@ parser.add_argument('--filter-scaling-factor', dest='filter_scaling_factor', def
 parser.add_argument('--activation', dest='activation', default= "ReLU", type=str, help='Set the activation function')
 parser.add_argument('--shared-encoder-type', dest='shared_encoder_type', default= "concatenated", type=str, help='Set the shared_encoder_type type for the ShaSpec model')
 parser.add_argument('--miss-rate', dest='miss_rate', default=0.0, type=float, help='Set the miss rate for modalities')
-parser.add_argument('--use-shared-encoder', dest='use_shared_encoder', default=True, type=bool, help='Whether the shared encoder should be used or not')
-parser.add_argument('--use-missing-modality-features', dest='use_missing_modality_features', default=True, type=bool, help='Whether the missing modality feature generation should be used or not')
+parser.add_argument('--ablate-shared-encoder', dest='ablate_shared_encoder', action='store_true', help='Whether the shared encoder should be ablated or not')
+parser.add_argument('--ablate-missing-modality-features', dest='ablate_missing_modality_features', action='store_true', help='Whether the missing modality feature generation should be ablated or not')
 
 args = parser.parse_args()
 

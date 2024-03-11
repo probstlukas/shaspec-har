@@ -41,8 +41,8 @@ class model_builder(nn.Module):
                                 self.args.num_classes,
                                 self.args.activation,
                                 self.args.shared_encoder_type, # concatenated weighted
-                                self.args.use_shared_encoder, # Ablation study 
-                                self.args.use_missing_modality_features,  # Ablation study
+                                self.args.ablate_shared_encoder, # Ablation study 
+                                self.args.ablate_missing_modality_features,  # Ablation study
                                 config)
             
             print("Build the ShaSpec model!")

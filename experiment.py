@@ -150,13 +150,13 @@ class Exp(object):
 
     def get_setting_name(self):
         if self.args.model_type == "shaspec":
-            setting = "model_{}_data_{}_seed_{}_miss_rate_{}_use_shared_encoder_{}_use_missing_modality_features_{}".format(
+            setting = "model_{}_data_{}_seed_{}_miss_rate_{}_ablate_shared_encoder_{}_ablate_missing_modality_features_{}".format(
                 self.args.model_type,
                 self.args.data_name,
                 self.args.seed, 
                 self.args.miss_rate, 
-                self.args.use_shared_encoder,
-                self.args.use_missing_modality_features 
+                self.args.ablate_shared_encoder,
+                self.args.ablate_missing_modality_features 
                 )
             return setting
         else:
@@ -205,8 +205,8 @@ class Exp(object):
             'criterion': self.args.criterion,
             'activation': self.args.activation,
             'shared_encoder_type': self.args.shared_encoder_type,
-            'use_shared_encoder': self.args.use_shared_encoder,
-            'use_missing_modality_features': self.args.use_missing_modality_features,
+            'ablate_shared_encoder': self.args.ablate_shared_encoder,
+            'ablate_missing_modality_features': self.args.ablate_missing_modality_features,
             'sampling_freq': self.args.sampling_freq,
             'num_classes': self.args.num_classes,
             'num_modalities': self.args.num_modalities,
@@ -269,18 +269,12 @@ class Exp(object):
             if not os.path.exists(cv_path):
                 os.makedirs(cv_path)
                 skip_train = False
-                skip_finetuning = False
             else:
                 file_in_folder = os.listdir(cv_path)
                 if 'final_best_vali.pth' in file_in_folder:
                     skip_train = True
                 else:
                     skip_train = False
-
-                if 'final_finetuned_best_vali.pth' in file_in_folder:
-                    skip_finetuning = True
-                else:
-                    skip_finetuning = False
 
             epoch_log_file_name = os.path.join(cv_path, "epoch_log.txt")
 
@@ -348,22 +342,28 @@ class Exp(object):
                     train_loss = np.average(train_loss)
                     vali_loss , vali_acc, vali_f_w,  vali_f_macro,  vali_f_micro = self.validation(self.model, val_loader, criterion)
 
-                    print("VALI: Epoch: {0}, Steps: {1} | Train Loss: {2:.7f}  Vali Loss: {3:.7f} Vali Accuracy: {4:.7f}  Vali weighted F1: {5:.7f}  Vali macro F1 {6:.7f} ".format(
-                        epoch + 1, train_steps, train_loss, vali_loss, vali_acc, vali_f_w, vali_f_macro))
+                    print("VALI: Epoch: {0}, Steps: {1} | Train Loss: {2:.7f}  Vali Loss: {3:.7f} Vali Accuracy: {4:.7f}  Vali weighted F1: {5:.7f}  Vali macro F1 {6:.7f}  Vali micro F1 {7:.7f}".format(
+                        epoch + 1, train_steps, train_loss, vali_loss, vali_acc, vali_f_w, vali_f_macro, vali_f_micro))
 
-                    epoch_log.write("VALI: Epoch: {0}, Steps: {1} | Train Loss: {2:.7f}  Vali Loss: {3:.7f} Vali Accuracy: {4:.7f}  Vali weighted F1: {5:.7f}  Vali macro F1 {6:.7f} \n".format(
-                        epoch + 1, train_steps, train_loss, vali_loss, vali_acc, vali_f_w, vali_f_macro))
+                    epoch_log.write("VALI: Epoch: {0}, Steps: {1} | Train Loss: {2:.7f}  Vali Loss: {3:.7f} Vali Accuracy: {4:.7f}  Vali weighted F1: {5:.7f}  Vali macro F1 {6:.7f}  Vali micro F1 {7:.7f}\n".format(
+                        epoch + 1, train_steps, train_loss, vali_loss, vali_acc, vali_f_w, vali_f_macro, vali_f_micro))
 
                     early_stopping(vali_loss, self.model, cv_path, vali_f_macro, vali_f_w, epoch_log)
                     if early_stopping.early_stop:
-                        print("Early stopping")
+                        print("Early stopping.")
                         break
                     epoch_log.write("----------------------------------------------------------------------------------------\n")
                     epoch_log.flush()
                     learning_rate_adapter(model_optim,vali_loss)
             
-                # Rename the best_vali to final_best_vali
-                os.rename(cv_path + '/' + 'best_vali.pth', cv_path + '/' + 'final_best_vali.pth')
+                # Construct the full path for both the original and the target filenames
+                original_file_path = os.path.join(cv_path, 'best_vali.pth')
+                new_file_path = os.path.join(cv_path, 'final_best_vali.pth')
+
+                # Check if the original file still exists
+                if os.path.exists(original_file_path):
+                    # Rename the file if it exists
+                    os.rename(original_file_path, new_file_path)
 
                 print("Loading the best validation model!")
                 self.model.load_state_dict(torch.load(cv_path + '/' + 'final_best_vali.pth'))

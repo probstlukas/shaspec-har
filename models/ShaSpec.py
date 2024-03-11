@@ -258,16 +258,16 @@ class ShaSpec(nn.Module):
         num_classes,
         activation,
         shared_encoder_type,
-        use_shared_encoder,
-        use_missing_modality_features,
+        ablate_shared_encoder,
+        ablate_missing_modality_features,
         config):
         super(ShaSpec, self).__init__()
 
         self.filter_num = config["filter_num"]
         self.filter_size = config["filter_size"]
         self.sa_div = config["sa_div"]
-        self.use_shared_encoder = use_shared_encoder
-        self.use_missing_modality_features = use_missing_modality_features
+        self.ablate_shared_encoder = ablate_shared_encoder
+        self.ablate_missing_modality_features = ablate_missing_modality_features
         self.num_of_sensor_channels = input_shape[3]
 
         print("=" * 16, " ShaSpec Model Configuration ", "=" * 16)
@@ -276,8 +276,8 @@ class ShaSpec(nn.Module):
         num_of_missing_modalities = ceil(num_modalities * miss_rate)
         self.num_available_modalities = num_modalities - num_of_missing_modalities
         print("Number of available modalities: ", self.num_available_modalities)
-        print("Use shared encoder: ", self.use_shared_encoder)
-        print("Use missing modality features: ", self.use_missing_modality_features)
+        print("Ablate shared encoder: ", self.ablate_shared_encoder)
+        print("Ablate missing modality features: ", self.ablate_missing_modality_features)
 
         # Individual specific encoders
         self.specific_encoders = nn.ModuleList([SpecificEncoder(input_shape, self.filter_num, self.filter_size, activation, self.sa_div) for _ in range(self.num_available_modalities)])
@@ -305,13 +305,13 @@ class ShaSpec(nn.Module):
         specific_features = [self.specific_encoders[i](available_modalities[i]) for i in range(len(available_modalities))]    
 
         """ ================ Shared Encoder ================"""
-        if self.use_shared_encoder:
+        if not self.ablate_shared_encoder:
             # Concatenate the modalities for shared processing
             concatenated_inputs = torch.cat(available_modalities, dim=3)  # Adjust dim according to how you concatenate
             shared_features = self.shared_encoder(concatenated_inputs)
 
         """ ================ Fuse Specific and Shared Features ================"""
-        if self.use_shared_encoder:
+        if not self.ablate_shared_encoder:
             # Fuse specific and shared features for available modalities
             fused_features = []
             for specific, shared in zip(specific_features, shared_features):
@@ -321,7 +321,7 @@ class ShaSpec(nn.Module):
             fused_features = specific_features
 
         """ ================ Missing Modality Feature Generation ================"""
-        if self.use_shared_encoder and self.use_missing_modality_features:
+        if not self.ablate_shared_encoder and not self.ablate_missing_modality_features:
             # Reconstruct missing modalities using shared features
             generated_features = self.missing_modality_feature_generation(shared_features, missing_indices)
 
