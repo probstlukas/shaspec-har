@@ -42,7 +42,7 @@ parser.add_argument('--sample-wise', dest='sample_wise', action='store_true', he
 parser.add_argument('--drop-transition', dest='drop_transition', action='store_true', help='Whether to drop the transition part')
 
 # Training config
-parser.add_argument('--batch-size', dest='batch_size', default=256, type=int,  help='Set the batch size')
+parser.add_argument('--batch-size', dest='batch_size', default=128, type=int,  help='Set the batch size')
 parser.add_argument('--shuffle', dest='shuffle', action='store_true', help='Whether to shuffle the data')
 parser.add_argument('--drop-last', dest='drop_last', action='store_true', help='Whether to drop the last mini batch')
 parser.add_argument('--train-vali-quote', dest='train_vali_quote', type=float, default=0.9, help='Portion of training dataset')
