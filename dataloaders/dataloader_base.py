@@ -28,8 +28,6 @@ class BASE_DATA():
                                        --->[TODO]
 
         freq (int)                     :Sampling Frequency of the correponding dataset
-        representation_type (Str)      :  What kind of representation should be load 
-                                       --->[time, freq, time_freq]
 
         difference  (Bool)             : Whether to calculate the first order derivative of the original data
         datanorm_type (Str)            : How to normalize the data 
@@ -57,7 +55,7 @@ class BASE_DATA():
         if not os.path.exists(window_save_path):
             os.mkdir(window_save_path)
         self.window_save_path       = window_save_path
-        self.representation_type    = args.representation_type
+    
         #assert self.data_name in []
         self.freq                   = args.sampling_freq  
 
@@ -120,24 +118,6 @@ class BASE_DATA():
         self.train_slidingwindows = self.get_the_sliding_index(self.data_x.copy(), self.data_y.copy(), "train")
         if self.exp_mode not in ["SOCV","FOCV"]:
             self.test_slidingwindows  = self.get_the_sliding_index(self.data_x.copy(), self.data_y.copy(), "test")
-
-
-        # ----------------------- TODO ----------------------------------------
-        if self.representation_type in ["freq", "time_freq"]:
-            print("------------freq representation is needed -----------------")
-            assert self.freq_save_path is not None
-            # train/test is different by the sliding step.
-            self.genarate_spectrogram(flag = "train")
-            self.genarate_spectrogram(flag = "test")
-
-            if self.load_all:
-                print("-------load all freq DATA --------")
-                self.data_freq = {}
-                for file in tqdm(self.train_freq_file_name):
-                    with open(os.path.join(self.train_freq_path,"{}.pickle".format(file)), 'rb') as handle:
-                        sample_x = pickle.load(handle)
-                    self.data_freq[file] = sample_x
-
 
         # ----------------------- TODO ----------------------------------------
         if self.exp_mode in ["SOCV","FOCV"]:

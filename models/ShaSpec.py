@@ -45,7 +45,6 @@ class BaseEncoder(nn.Module):
         self.fc_fusion = nn.Linear(downsampled_length * filter_num, 2 * filter_num)
 
     def forward(self, x):
-        # print("Input shape: ", x.shape)
         """
         Perform a forward pass of the SpecificEncoder model.
 
@@ -62,8 +61,6 @@ class BaseEncoder(nn.Module):
         x = self.conv_layers(x)
         # -----> B x F' x T* x C
 
-        # print("After conv block: ", x.shape)
-
         """ ================ Cross-Channel Interaction ================"""
         # Apply self-attention to each time step in the sequence
         # For each time step 't' in the sequence:
@@ -77,7 +74,6 @@ class BaseEncoder(nn.Module):
             dim=-1,
         )
         # -----> B x F' x C x T*
-
 
         """ ================ Cross-Channel Fusion ================"""
         x = refined.permute(0, 2, 1, 3)
@@ -151,7 +147,6 @@ class SharedEncoder(nn.Module):
         # Concatenate modalities
         input_shape = (input_shape[0], input_shape[1], input_shape[2], input_shape[3] * num_available_modalities)
 
-        # print("Shared encoder input shape in SharedEncoder: ", input_shape) # 64 1 125 36
         self.be = BaseEncoder(
             input_shape,
             filter_num,
@@ -159,17 +154,20 @@ class SharedEncoder(nn.Module):
             activation, 
             sa_div
         )
-        # print("Shared encoder input shape: ", input_shape)
         
     def forward(self, x):
         x = self.be(x)       
-        # print("Shared feature shape in forward func: ", x.shape)
         shared_features = torch.tensor_split(x, self.num_available_modalities, dim=1)
-        # print("Each shared feature shape: ", shared_features[0].shape)
         return shared_features
 
 
 class ResidualBlock(nn.Module):
+    """
+    Residual Block to fuse specific and shared features.
+
+    Input: specific feature, shared feature
+    Output: modality embedding
+    """
     def __init__(
         self,
         filter_num,
@@ -181,8 +179,6 @@ class ResidualBlock(nn.Module):
 
     def forward(self, specific_feature, shared_feature):
         # Concatenate
-        # print("Specific feature shape: ", specific_feature.shape)
-        # print("Shared feature shape: ", shared_feature.shape)
         concatenated = torch.cat((specific_feature, shared_feature), dim=2)
 
         # Linear projection for fusion
@@ -211,17 +207,19 @@ class MissingModalityFeatureGeneration(nn.Module):
 
         # Calculate the mean along the stack dimension (0) to get the average feature
         mean_feature = torch.mean(torch.stack(shared_features), dim=0)
-        # print("Mean feature: ", mean_feature)
 
         generated_features = [mean_feature for _ in missing_indices]
-        # print("Missing indices length for gen. features: ", len(missing_indices))
-        # print("Generated features length: ", generated_features)
-        # print("Generated features: ", generated_features)
 
         return generated_features
 
 
 class Decoder(nn.Module):
+    """
+    Decoder to predict the final output.
+
+    Input: concatenated features
+    Output: prediction
+    """
     def __init__(
         self,
         number_class,
@@ -233,23 +231,30 @@ class Decoder(nn.Module):
         
         # Flatten all dimensions before FC-layer
         self.flatten = nn.Flatten()
-        # 42 * 5 * 2
-        # C x 2F' = 42 * 5 * 2 = 420
-        # print("Filter num: ", filter_num)
-        # print("Num of sensor channels: ", num_of_sensor_channels)
-        # print("modalities num: ", num_modalities)
         self.fc_layer = nn.Linear(2 * filter_num * num_of_sensor_channels * num_modalities, number_class)
 
     def forward(self, concatenated_features):
         output = self.flatten(concatenated_features)
-        # print("Shape after flattening: ", output.shape)
         output = self.fc_layer(output)
-        # print("Shape after fc layer: ", output.shape)
 
         return output
 
 
 class ShaSpec(nn.Module):
+    """
+    ShaSpec model for multimodal sensor data.
+
+    Args:
+        input_shape (tuple): Shape of the input tensor.
+        num_modalities (int): Number of modalities.
+        miss_rate (float): Miss rate for the missing modality.
+        num_classes (int): Number of classes.
+        activation (str): Activation function (ReLU or Tanh).
+        shared_encoder_type (str): Type of shared encoder.
+        ablate_shared_encoder (bool): Whether to ablate the shared encoder.
+        ablate_missing_modality_features (bool): Whether to ablate the missing modality features.
+        config (dict): Configuration dictionary.
+    """
     def __init__(
         self,
         input_shape,
@@ -282,12 +287,16 @@ class ShaSpec(nn.Module):
         # Individual specific encoders
         self.specific_encoders = nn.ModuleList([SpecificEncoder(input_shape, self.filter_num, self.filter_size, activation, self.sa_div) for _ in range(self.num_available_modalities)])
 
-        # One shared encoder for all modalities
-        self.shared_encoder = SharedEncoder(self.num_available_modalities, input_shape, self.filter_num, self.filter_size, activation, self.sa_div, shared_encoder_type)
+        if not self.ablate_shared_encoder:
+            # One shared encoder for all modalities
+            self.shared_encoder = SharedEncoder(self.num_available_modalities, input_shape, self.filter_num, self.filter_size, activation, self.sa_div, shared_encoder_type)
 
-        self.residual_block = ResidualBlock(self.filter_num)
+        if not self.ablate_shared_encoder:
+            # Residual block for fusion
+            self.residual_block = ResidualBlock(self.filter_num)
 
-        self.missing_modality_feature_generation = MissingModalityFeatureGeneration()
+        if not self.ablate_shared_encoder and not self.ablate_missing_modality_features:
+            self.missing_modality_feature_generation = MissingModalityFeatureGeneration()
 
         self.decoder = Decoder(num_classes, self.num_of_sensor_channels, num_modalities, self.filter_num)
 
@@ -334,7 +343,6 @@ class ShaSpec(nn.Module):
                 # fused_features.insert(index, torch.zeros_like(fused_features[0]))
                 fused_features.insert(index, torch.full_like(fused_features[0], float('nan')))
 
-        # print(fused_features)
         """ ================ Decoder ================"""
         # Prepare for decoding
         concatenated_features = torch.cat(fused_features, dim=2)

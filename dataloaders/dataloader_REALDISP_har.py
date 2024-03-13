@@ -39,8 +39,6 @@ class REALDISP_HAR_DATA(BASE_DATA):
             scales : Depends on the sampling frequency of the data
             wavelet : Methods of wavelet transformation
         """
-
-
 		
         # [2, 118], i.e. 117 channels, the first two columns are timestamps, the last one is activity_id
         self.used_cols = [i for i in range(2, 119)]
@@ -141,7 +139,7 @@ class REALDISP_HAR_DATA(BASE_DATA):
             if not match:
                 continue  # If the filename doesn't match the pattern, skip it
 
-            sub, scenario, mutual_displacement = match.groups()
+            sub, _, _ = match.groups()
 
             # Skip files with scenarios not in the specified scenarios list
             # if scenario not in self.scenarios:

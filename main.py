@@ -23,7 +23,6 @@ sys.path.append('/pfs/data5/home/kit/tm/px6680/lukasprobst/shaspec-har/')
 import argparse
 from experiment import Exp
 
-from dataloaders import data_set, data_dict
 import torch
 import yaml
 
@@ -71,7 +70,6 @@ parser.add_argument('--load-all', dest='load_all', action='store_true', help='Wh
 parser.add_argument('--wavelet-function', dest='wavelet_function', default= None, type=str, help='Method to generate spectrogram')
 parser.add_argument('--mixup-alpha', dest='mixup_alpha', default=0.5, type=float,  help='Set the mixup distribution')
 
-parser.add_argument('--representation-type', dest='representation_type', default= "time", type=str, help='Set the data type')
 # Experiment mode
 parser.add_argument('--exp-mode', dest='exp_mode', default= "LOCV", type=str, help='Set the experiment type')
 
