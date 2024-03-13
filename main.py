@@ -36,7 +36,7 @@ parser.add_argument('--root-path', dest='root_path', default= "../datasets", typ
 
 # Data normalization
 parser.add_argument('--datanorm-type', dest='datanorm_type', default= "standardization", choices=[None, "minmax", "standardization"],
-                    type=str, help='Set the method for standize the data')
+                    type=str, help='Set the method to standize the data')
 parser.add_argument('--sample-wise', dest='sample_wise', action='store_true', help='Whether to perform sample_wise normailization')
 
 parser.add_argument('--drop-transition', dest='drop_transition', action='store_true', help='Whether to drop the transition part')
@@ -60,15 +60,7 @@ parser.add_argument('--seed', dest='seed', default=1, type=int,  help='Set the t
 
 parser.add_argument('--data-name', dest='data_name', default= None, type=str, help='Set the dataset name')
 
-parser.add_argument('--wavelet-filtering', dest='wavelet_filtering', action='store_true', help='Whether to use wavelet filtering to prepare the date')
-
-parser.add_argument('--difference', dest='difference', action='store_true', help='Whether to use difference')
-parser.add_argument('--filtering', dest='filtering', action='store_true', help='Whether to use filtering')
-parser.add_argument('--magnitude', dest='magnitude', action='store_true', help='Whether to use magnitude')
-parser.add_argument('--weighted-sampler', dest='weighted_sampler', action='store_true', help='Whether to use weighted_sampler')
 parser.add_argument('--load-all', dest='load_all', action='store_true', help='Whether to load all freq data')
-parser.add_argument('--wavelet-function', dest='wavelet_function', default= None, type=str, help='Method to generate spectrogram')
-parser.add_argument('--mixup-alpha', dest='mixup_alpha', default=0.5, type=float,  help='Set the mixup distribution')
 
 # Experiment mode
 parser.add_argument('--exp-mode', dest='exp_mode', default= "LOCV", type=str, help='Set the experiment type')
@@ -87,28 +79,8 @@ args = parser.parse_args()
 
 args.use_gpu = True if torch.cuda.is_available() else False
 
-args.random_augmentation_config = {"jitter": True,
-                                   "moving_average": True,
-                                   "magnitude_scaling": True,
-                                   "magnitude_warp": True,
-                                   "magnitude_shift": True,
-                                   "time_warp": True,
-                                   "window_warp": True,
-                                   "window_slice": True,
-                                   "random_sampling": True,
-                                   "slope_adding": True
-                                   }
-random_augmentation_nr = 0
-for key in args.random_augmentation_config.keys():
-    if args.random_augmentation_config[key]:
-        random_augmentation_nr = random_augmentation_nr + 1
-args.random_augmentation_nr = random_augmentation_nr
-
 args.pos_select       = None
 args.sensor_select    = None
-
-if args.data_name ==  "skodar":
-    args.exp_mode = "SOCV"
 
 config_file = open('configs/data.yaml', mode='r')
 data_config = yaml.load(config_file, Loader=yaml.FullLoader)

@@ -1,6 +1,5 @@
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 from torch.utils.data import DataLoader
 from torch import optim
 import os
@@ -11,15 +10,12 @@ from sklearn.metrics import confusion_matrix
 # Import models
 from models.model_builder import model_builder
 
-from torch.utils.data.sampler import WeightedRandomSampler
 from sklearn.metrics import accuracy_score
 from sklearn.metrics import f1_score
 from utils import MixUpLoss, EarlyStopping, adjust_learning_rate_class
 
-from datetime import datetime
 import matplotlib.pyplot as plt
 import seaborn as sns
-from dataloaders.augmentation import RandomAugment
 import random
 import os
 
@@ -73,7 +69,7 @@ class Exp(object):
         return criterion
 
 
-    def _get_data(self, data, flag="train", weighted_sampler = False):
+    def _get_data(self, data, flag="train"):
         """
         Get the data loader
 
@@ -125,25 +121,13 @@ class Exp(object):
             
             return batch_x, batch_y, missing_indices
 
-        if weighted_sampler and flag == 'train':
 
-            sampler = WeightedRandomSampler(
-                data.act_weights, len(data.act_weights)
-            )
-
-            data_loader = DataLoader(data, 
-                                     batch_size   =  self.args.batch_size,
-                                     num_workers  =  0,
-                                     sampler=sampler,
-                                     drop_last    =  False,
-                                     collate_fn = collate_fn)
-        else:
-            data_loader = DataLoader(data, 
-                                     batch_size   =  self.args.batch_size,
-                                     shuffle      =  shuffle_flag,
-                                     num_workers  =  0,
-                                     drop_last    =  False,
-                                     collate_fn   = collate_fn)
+        data_loader = DataLoader(data, 
+                                    batch_size   =  self.args.batch_size,
+                                    shuffle      =  shuffle_flag,
+                                    num_workers  =  0,
+                                    drop_last    =  False,
+                                    collate_fn   = collate_fn)
 
         return data_loader
 
@@ -260,9 +244,9 @@ class Exp(object):
             cv_path = os.path.join(self.path, f"cv_{iter}")
 
             # Get the loader of train val test
-            train_loader = self._get_data(dataset, flag = 'train', weighted_sampler = self.args.weighted_sampler)
-            val_loader = self._get_data(dataset, flag = 'vali', weighted_sampler = self.args.weighted_sampler)
-            test_loader   = self._get_data(dataset, flag = 'test', weighted_sampler = self.args.weighted_sampler)
+            train_loader = self._get_data(dataset, flag = 'train')
+            val_loader = self._get_data(dataset, flag = 'vali')
+            test_loader   = self._get_data(dataset, flag = 'test')
             
             train_steps = len(train_loader)
 
@@ -304,7 +288,7 @@ class Exp(object):
                     self.model.train()
                     epoch_time = time.time()
                 
-                    for (batch_x,batch_y,missing_indices) in train_loader:                        
+                    for (batch_x, batch_y, missing_indices) in train_loader:                        
                         # Ensure models and variables are on the same device
                         if self.args.model_type == "shaspec":
                             batch_x = [x.double().to(self.device) for x in batch_x]
@@ -319,14 +303,6 @@ class Exp(object):
                             outputs = self.model(batch_x)
                         
                         loss = criterion(outputs, batch_y)
-    
-                        if self.args.wavelet_filtering and self.args.wavelet_filtering_regularization:
-                            reg_loss = 0
-                            for name,parameter in self.model.named_parameters():
-                                if "gamma" in name:
-                                    reg_loss += torch.sum(torch.abs(parameter))
-
-                            loss = loss + self.args.regulatization_tradeoff*reg_loss
 
                         train_loss.append(loss.item())
 

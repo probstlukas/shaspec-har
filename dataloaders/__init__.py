@@ -63,7 +63,6 @@ class data_set(Dataset):
         if self.args.sample_wise ==True:
             sample_x = np.array(self.data_x.iloc[start_index:end_index, 1:-1].apply(lambda x: (x - np.mean(x)) / (np.max(x) - np.min(x))))
         else:
-            # ShaSpec will navigate here
             sample_x = self.data_x.iloc[start_index:end_index, 1:-1].values
 
         sample_y = self.class_transform[self.data_y.iloc[start_index:end_index].mode().loc[0]]

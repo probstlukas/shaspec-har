@@ -32,7 +32,6 @@ class REALDISP_HAR_DATA(BASE_DATA):
     def __init__(self, args):
         """
         root_path : Root directory of the data set
-        difference (bool) : Whether to calculate the first order derivative of the original data
         datanorm_type (str) : Methods of data normalization: "standardization", "minmax" , "per_sample_std", "per_sample_minmax"
         
         spectrogram (bool): Whether to convert raw data into frequency representations

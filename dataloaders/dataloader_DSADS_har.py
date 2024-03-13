@@ -1,5 +1,4 @@
 import pandas as pd
-import numpy as np
 import os
 
 from dataloaders.dataloader_base import BASE_DATA
@@ -27,12 +26,7 @@ class DSADS_HAR_DATA(BASE_DATA):
 
         """
         root_path : Root directory of the data set
-        difference (bool) : Whether to calculate the first order derivative of the original data
         datanorm_type (str) : Methods of data normalization: "standardization", "minmax" , "per_sample_std", "per_sample_minmax"
-        
-        spectrogram (bool): Whether to convert raw data into frequency representations
-            scales : Depends on the sampling frequency of the data （ UCI 数据的采样频率？？）
-            wavelet : Methods of wavelet transformation
 
         """
 
@@ -90,11 +84,9 @@ class DSADS_HAR_DATA(BASE_DATA):
 
         self.drop_activities = []
 
-        # TODO , here the keys for each set will be updated in the readtheload function
         self.train_keys   = [1,2,3,4,5,6,7]
         self.vali_keys    = []
         self.test_keys    = [8]
-
         
         self.LOCV_keys = [[1,2],[3,4],[5,6],[7,8]]
         self.all_keys = [1,2,3,4,5,6,7,8]

@@ -1,13 +1,8 @@
 # ---- Import models ---------------
 from models.ShaSpec import ShaSpec
-from models.Attend import AttendDiscriminate
-from dataloaders.utils import PrepareWavelets,FiltersExtention
 # ------- Import other packages ----------------
-import torch
 import torch.nn as nn
-import torch.nn.functional as F
 import yaml
-import numpy as np
 
 
 class Identity(nn.Module):
