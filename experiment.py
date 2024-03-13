@@ -5,6 +5,8 @@ from torch import optim
 import os
 import numpy as np
 import time
+
+import yaml
 from dataloaders import data_dict,data_set
 from sklearn.metrics import confusion_matrix
 # Import models
@@ -167,6 +169,14 @@ class Exp(object):
         score_log_file_name = os.path.join(self.path, "score.txt")
         config_file_name = os.path.join(self.path, "config.json")
 
+        modeL_config_file = open('configs/model.yaml', mode='r')
+        model_config = yaml.load(config_file, Loader=yaml.FullLoader)["shaspec"]
+
+        # Load the configuration
+        filter_num = model_config['filter_num']
+        filter_size = model_config['filter_size']
+        sa_div = model_config['sa_div']
+
         config_dict = {
             'model_type': self.args.model_type,
             'model_size': int(self.args.model_size),
@@ -199,7 +209,10 @@ class Exp(object):
             'windowsize': self.args.windowsize,
             'input_length': self.args.input_length,
             'c_in_per_mod': self.args.c_in_per_mod,
-            'f_in': self.args.f_in
+            'f_in': self.args.f_in,
+            'filter_num': filter_num,
+            'filter_size': filter_size,
+            'sa_div': sa_div
         }
 
         torch.manual_seed(self.args.seed)
