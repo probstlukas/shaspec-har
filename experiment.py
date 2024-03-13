@@ -85,7 +85,6 @@ class Exp(object):
 
         data  = data_set(self.args,data, flag)
 
-        # if flag == "train":
         def collate_fn(batch):
             """
             Collates the batch of data.
@@ -117,7 +116,8 @@ class Exp(object):
             # Setting the omitted modalities to NaN (or zero)
             for index in missing_indices:
                 # Ensure the tensor at the omitted modality index is filled with NaN
-                batch_x[index] = torch.full_like(batch_x[index], float('nan'))
+                # batch_x[index] = torch.full_like(batch_x[index], float('nan'))
+                batch_x[index] = torch.full_like(batch_x[index], 0)
             
             return batch_x, batch_y, missing_indices
 
