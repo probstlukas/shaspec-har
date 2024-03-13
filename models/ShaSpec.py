@@ -225,13 +225,22 @@ class Decoder(nn.Module):
         number_class,
         num_of_sensor_channels,
         num_modalities,
-        filter_num
+        num_available_modalities,
+        filter_num,
+        ablate_shared_encoder,
+        ablate_missing_modality_features
     ):
         super(Decoder, self).__init__()  
         
         # Flatten all dimensions before FC-layer
         self.flatten = nn.Flatten()
-        self.fc_layer = nn.Linear(2 * filter_num * num_of_sensor_channels * num_modalities, number_class)
+
+        # If shared encoder or missing modality features are ablated, use the number of available modalities
+        if not ablate_shared_encoder and not ablate_missing_modality_features:
+            self.fc_layer = nn.Linear(2 * filter_num * num_of_sensor_channels * num_modalities, number_class)
+        else:
+            self.fc_layer = nn.Linear(2 * filter_num * num_of_sensor_channels * num_available_modalities, number_class)
+
 
     def forward(self, concatenated_features):
         output = self.flatten(concatenated_features)
@@ -298,7 +307,7 @@ class ShaSpec(nn.Module):
         if not self.ablate_shared_encoder and not self.ablate_missing_modality_features:
             self.missing_modality_feature_generation = MissingModalityFeatureGeneration()
 
-        self.decoder = Decoder(num_classes, self.num_of_sensor_channels, num_modalities, self.filter_num)
+        self.decoder = Decoder(num_classes, self.num_of_sensor_channels, num_modalities, self.num_available_modalities, self.filter_num, ablate_shared_encoder, ablate_missing_modality_features)
 
     def forward(self, x_list, missing_indices):
         """
@@ -337,11 +346,6 @@ class ShaSpec(nn.Module):
             # Insert the reconstructed modalities back at their original positions into fused_features
             for index, feature in sorted(zip(missing_indices, generated_features), key=lambda x: x[0]):
                 fused_features.insert(index, feature)
-        else:
-            # If missing modalities are not reconstructed, insert NaN at their original positions into fused_features
-            for index in sorted(missing_indices):
-                # fused_features.insert(index, torch.zeros_like(fused_features[0]))
-                fused_features.insert(index, torch.full_like(fused_features[0], float('nan')))
 
         """ ================ Decoder ================"""
         # Prepare for decoding
@@ -349,5 +353,9 @@ class ShaSpec(nn.Module):
 
         # Decode to get final predictions
         prediction = self.decoder(concatenated_features)
+
+        print("PREDICTION HERE")
+        print(prediction)
+        print(prediction.shape)
 
         return prediction
