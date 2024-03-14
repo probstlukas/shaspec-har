@@ -353,9 +353,5 @@ class ShaSpec(nn.Module):
 
         # Decode to get final predictions
         prediction = self.decoder(concatenated_features)
-
-        print("PREDICTION HERE")
-        print(prediction)
-        print(prediction.shape)
-
+        
         return prediction
