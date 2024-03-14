@@ -10,5 +10,3 @@
 *.out
 **/.ipynb_checkpoints/
 *.pdf
-
-test.sh

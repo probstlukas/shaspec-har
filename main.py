@@ -51,7 +51,7 @@ parser.add_argument('--learning-rate', dest='learning_rate', default=0.001, type
 parser.add_argument('--learning-rate-patience', dest='learning_rate_patience', default=20, type=int,  help='Patience for adjust the learning rate')
 parser.add_argument('--early-stop-patience', dest='early_stop_patience', default=15, type=int,  help='Patience for stop the training')
 parser.add_argument('--learning-rate-factor', dest='learning_rate_factor', default=0.1, type=float,  help='Set the rate of adjusting learning rate')
-parser.add_argument('--weight-decay', dest='weight_decay', default=0.01, type=float,  help='Set the weight decay')
+parser.add_argument('--weight-decay', dest='weight_decay', default=0, type=float,  help='Set the weight decay')
 parser.add_argument('--use-multi-gpu', dest='use_multi_gpu', action='store_true', help='Whether to use multi gpu')
 parser.add_argument('--gpu', dest='gpu', default=0, type=int,  help='Set the gpu id')
 parser.add_argument('--optimizer', dest='optimizer', default= "Adam", type=str, help='Set the optimized type')
