@@ -277,6 +277,8 @@ class ShaSpec(nn.Module):
         config):
         super(ShaSpec, self).__init__()
 
+        print(ablate_shared_encoder)
+        print(ablate_missing_modality_features)
         self.filter_num = config["filter_num"]
         self.filter_size = config["filter_size"]
         self.sa_div = config["sa_div"]
@@ -347,11 +349,17 @@ class ShaSpec(nn.Module):
             for index, feature in sorted(zip(missing_indices, generated_features), key=lambda x: x[0]):
                 fused_features.insert(index, feature)
         else:
-            zero_features = [torch.zeros(fused_features[0].shape) for _ in missing_indices]
-            # Insert missing modalities back at their original positions into fused_features
-            for index, feature in sorted(zip(missing_indices, zero_features), key=lambda x: x[0]):
-                fused_features.insert(index, feature)
+            # Assume fused_features already contains at least one tensor.
+            # Use the device of the first tensor in fused_features as the target device.
+            target_device = fused_features[0].device
 
+            # Generate zero features for missing modalities on the target device
+            generated_features = [torch.zeros_like(fused_features[0], device=target_device) for _ in missing_indices]
+
+            # Insert the generated features into fused_features at their original positions
+            for index, feature in sorted(zip(missing_indices, generated_features), key=lambda x: x[0]):
+                fused_features.insert(index, feature)
+        
         """ ================ Decoder ================"""
         # Prepare for decoding
         concatenated_features = torch.cat(fused_features, dim=2)

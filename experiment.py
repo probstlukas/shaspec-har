@@ -117,7 +117,7 @@ class Exp(object):
 
             # Setting the omitted modalities to NaN (or zero)
             for index in missing_indices:
-                # Ensure the tensor at the omitted modality index is filled with NaN
+                # Ensure the tensor at the omitted modality index is filled with 0
                 # batch_x[index] = torch.full_like(batch_x[index], float('nan'))
                 batch_x[index] = torch.full_like(batch_x[index], 0)
             
