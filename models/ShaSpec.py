@@ -349,17 +349,20 @@ class ShaSpec(nn.Module):
             for index, feature in sorted(zip(missing_indices, generated_features), key=lambda x: x[0]):
                 fused_features.insert(index, feature)
         else:
+        # No Shared Encoder or Missing Modality Feature Generation
             # Assume fused_features already contains at least one tensor.
             # Use the device of the first tensor in fused_features as the target device.
             target_device = fused_features[0].device
+            print(target_device)
 
             # Generate zero features for missing modalities on the target device
-            generated_features = [torch.zeros_like(fused_features[0], device=target_device) for _ in missing_indices]
-
+            zero_features = [torch.zeros_like(fused_features[0], device=target_device) for _ in missing_indices]
+    
             # Insert the generated features into fused_features at their original positions
-            for index, feature in sorted(zip(missing_indices, generated_features), key=lambda x: x[0]):
+            for index, feature in sorted(zip(missing_indices, zero_features), key=lambda x: x[0]):
                 fused_features.insert(index, feature)
-        
+
+            print(fused_features)
         """ ================ Decoder ================"""
         # Prepare for decoding
         concatenated_features = torch.cat(fused_features, dim=2)
