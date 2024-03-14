@@ -170,7 +170,7 @@ class Exp(object):
         config_file_name = os.path.join(self.path, "config.json")
 
         modeL_config_file = open('configs/model.yaml', mode='r')
-        model_config = yaml.load(config_file, Loader=yaml.FullLoader)["shaspec"]
+        model_config = yaml.load(modeL_config_file, Loader=yaml.FullLoader)["shaspec"]
 
         # Load the configuration
         filter_num = model_config['filter_num']
