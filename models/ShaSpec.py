@@ -236,10 +236,10 @@ class Decoder(nn.Module):
         self.flatten = nn.Flatten()
 
         # If shared encoder or missing modality features are ablated, use the number of available modalities
-        if not ablate_shared_encoder and not ablate_missing_modality_features:
-            self.fc_layer = nn.Linear(2 * filter_num * num_of_sensor_channels * num_modalities, number_class)
-        else:
-            self.fc_layer = nn.Linear(2 * filter_num * num_of_sensor_channels * num_available_modalities, number_class)
+        # if not ablate_shared_encoder and not ablate_missing_modality_features:
+        self.fc_layer = nn.Linear(2 * filter_num * num_of_sensor_channels * num_modalities, number_class)
+        # else:
+        #     self.fc_layer = nn.Linear(2 * filter_num * num_of_sensor_channels * num_available_modalities, number_class)
 
 
     def forward(self, concatenated_features):
@@ -346,6 +346,11 @@ class ShaSpec(nn.Module):
             # Insert the reconstructed modalities back at their original positions into fused_features
             for index, feature in sorted(zip(missing_indices, generated_features), key=lambda x: x[0]):
                 fused_features.insert(index, feature)
+        else:
+            zero_features = [torch.zeros(fused_features[0].shape) for _ in missing_indices]
+            # Insert missing modalities back at their original positions into fused_features
+            for index, feature in sorted(zip(missing_indices, zero_features), key=lambda x: x[0]):
+                fused_features.insert(index, feature)
 
         """ ================ Decoder ================"""
         # Prepare for decoding
@@ -353,5 +358,5 @@ class ShaSpec(nn.Module):
 
         # Decode to get final predictions
         prediction = self.decoder(concatenated_features)
-        
+
         return prediction
