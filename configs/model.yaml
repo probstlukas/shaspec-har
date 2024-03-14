@@ -1,4 +1,4 @@
 shaspec:
   filter_num: 64
   filter_size: 5
-  sa_div: 1
+  sa_div: 8
