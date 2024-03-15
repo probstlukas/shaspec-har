@@ -10,3 +10,5 @@
 *.out
 **/.ipynb_checkpoints/
 *.pdf
+
+*.DS_Store
