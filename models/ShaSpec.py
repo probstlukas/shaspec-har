@@ -354,11 +354,11 @@ class ShaSpec(nn.Module):
             # Use the device of the first tensor in fused_features as the target device.
             target_device = fused_features[0].device
 
-            # Generate zero features for missing modalities on the target device
-            zero_features = [torch.zeros_like(fused_features[0], device=target_device) for _ in missing_indices]
+            # Generate random noise features for missing modalities on the target device
+            noise_features = [torch.rand_like(fused_features[0], device=target_device) for _ in missing_indices]
     
             # Insert the generated features into fused_features at their original positions
-            for index, feature in sorted(zip(missing_indices, zero_features), key=lambda x: x[0]):
+            for index, feature in sorted(zip(missing_indices, noise_features), key=lambda x: x[0]):
                 fused_features.insert(index, feature)
         
         """ ================ Decoder ================"""
