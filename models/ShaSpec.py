@@ -277,8 +277,6 @@ class ShaSpec(nn.Module):
         config):
         super(ShaSpec, self).__init__()
 
-        print(ablate_shared_encoder)
-        print(ablate_missing_modality_features)
         self.filter_num = config["filter_num"]
         self.filter_size = config["filter_size"]
         self.sa_div = config["sa_div"]
