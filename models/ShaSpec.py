@@ -197,7 +197,7 @@ class MissingModalityFeatureGeneration(nn.Module):
     def __init__(self):
         super(MissingModalityFeatureGeneration, self).__init__()
 
-    def forward(self, shared_features, missing_indices):
+    def forward(self, shared_features, missing_indices, ablated, ablated_shape):
         """
         Args:
             shared_features (list): List of shared features for each modality, can contain None for missing modalities.
@@ -205,10 +205,14 @@ class MissingModalityFeatureGeneration(nn.Module):
             list: List of generated features for missing modalities.
         """
 
-        # Calculate the mean along the stack dimension (0) to get the average feature
-        mean_feature = torch.mean(torch.stack(shared_features), dim=0)
+        if not ablated:
+            # Calculate the mean along the stack dimension (0) to get the average feature
+            mean_feature = torch.mean(torch.stack(shared_features), dim=0)
 
-        generated_features = [mean_feature for _ in missing_indices]
+            generated_features = [mean_feature for _ in missing_indices]
+        else: 
+            # Noise features for ablated shared encoder or missing modality features
+            generated_features = [torch.randn(ablated_shape) for _ in missing_indices]
 
         return generated_features
 
@@ -304,12 +308,10 @@ class ShaSpec(nn.Module):
             # Residual block for fusion
             self.residual_block = ResidualBlock(self.filter_num)
 
-        if not self.ablate_shared_encoder and not self.ablate_missing_modality_features:
-            self.missing_modality_feature_generation = MissingModalityFeatureGeneration()
+        
+        self.missing_modality_feature_generation = MissingModalityFeatureGeneration()
 
         self.decoder = Decoder(num_classes, self.num_of_sensor_channels, num_modalities, self.num_available_modalities, self.filter_num, ablate_shared_encoder, ablate_missing_modality_features)
-
-        self.missing_modality_embedding = nn.Parameter(torch.randn(1, input_shape[3], 2 * self.filter_num))
 
     def forward(self, x_list, missing_indices):
         """
@@ -341,22 +343,13 @@ class ShaSpec(nn.Module):
             fused_features = specific_features
 
         """ ================ Missing Modality Feature Generation ================"""
-        if not self.ablate_shared_encoder and not self.ablate_missing_modality_features:
-            # Reconstruct missing modalities using shared features
-            generated_features = self.missing_modality_feature_generation(shared_features, missing_indices)
+        ablated = self.ablate_shared_encoder or self.ablate_missing_modality_features
+        ablated_shape = specific_features[0].shape
+        generated_features = self.missing_modality_feature_generation(shared_features, missing_indices, ablated, ablated_shape)
 
-            # Insert the reconstructed modalities back at their original positions into fused_features
-            for index, feature in sorted(zip(missing_indices, generated_features), key=lambda x: x[0]):
-                fused_features.insert(index, feature)
-        else:
-            # Replace the random noise with the missing modality embedding.
-            # The embedding is expanded to match the batch size of the input features.
-            batch_size = fused_features[0].shape[0]
-            missing_features = self.missing_modality_embedding.expand(batch_size, -1, -1)
-            
-            # Insert the missing modality embeddings into fused_features at their original positions
-            for index in sorted(missing_indices):
-                fused_features.insert(index, missing_features)
+        # Insert the reconstructed modalities back at their original positions into fused_features
+        for index, feature in sorted(zip(missing_indices, generated_features), key=lambda x: x[0]):
+            fused_features.insert(index, feature)
         
         """ ================ Decoder ================"""
         # Prepare for decoding
