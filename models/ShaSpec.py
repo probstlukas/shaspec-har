@@ -238,7 +238,7 @@ class Decoder(nn.Module):
         
         # Flatten all dimensions before FC-layer
         self.flatten = nn.Flatten()
-        
+
         self.fc_layer = nn.Linear(2 * filter_num * num_of_sensor_channels * num_modalities, number_class)
         
 
@@ -323,6 +323,7 @@ class ShaSpec(nn.Module):
         # Process with specific encoders for available modalities
         specific_features = [self.specific_encoders[i](available_modalities[i]) for i in range(len(available_modalities))]    
 
+        shared_features = None
         """ ================ Shared Encoder ================"""
         if not self.ablate_shared_encoder:
             # Concatenate the modalities for shared processing
