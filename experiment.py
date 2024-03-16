@@ -213,8 +213,6 @@ class Exp(object):
             'filter_num': filter_num,
             'filter_size': filter_size,
             'sa_div': sa_div,
-            'difference': self.args.difference,
-            'filtering': self.args.filtering,
         }
 
         torch.manual_seed(self.args.seed)

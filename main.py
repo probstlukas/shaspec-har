@@ -60,8 +60,6 @@ parser.add_argument('--seed', dest='seed', default=1, type=int,  help='Set the t
 
 parser.add_argument('--data-name', dest='data_name', default= None, type=str, help='Set the dataset name')
 
-parser.add_argument('--difference', dest='difference', action='store_true', help='Whether to use difference as input')
-parser.add_argument('--filtering', dest='filtering', action='store_true', help='Whether to use filtering as input')
 parser.add_argument('--load-all', dest='load_all', action='store_true', help='Whether to load all freq data')
 
 # Experiment mode
@@ -100,14 +98,6 @@ args.input_length    =  args.windowsize
 # args.c_in            =  config["num_channels"]
 # For ShaSpec we want the number of channels per modality
 args.c_in    =  config["num_channels"] // args.num_modalities
-
-if args.difference:
-    args.c_in  = args.c_in * 2
-if  args.filtering :
-    for col in config["sensors"]:
-        if "acc" in col:
-            args.c_in = args.c_in + 1
-
 args.f_in            =  1
 
 print("Configuration done.")

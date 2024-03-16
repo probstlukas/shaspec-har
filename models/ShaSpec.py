@@ -238,12 +238,9 @@ class Decoder(nn.Module):
         
         # Flatten all dimensions before FC-layer
         self.flatten = nn.Flatten()
-
-        # If shared encoder or missing modality features are ablated, use the number of available modalities
-        # if not ablate_shared_encoder and not ablate_missing_modality_features:
+        
         self.fc_layer = nn.Linear(2 * filter_num * num_of_sensor_channels * num_modalities, number_class)
-        # else:
-        #     self.fc_layer = nn.Linear(2 * filter_num * num_of_sensor_channels * num_available_modalities, number_class)
+        
 
 
     def forward(self, concatenated_features):
@@ -346,11 +343,14 @@ class ShaSpec(nn.Module):
         ablated = self.ablate_shared_encoder or self.ablate_missing_modality_features
         ablated_shape = specific_features[0].shape
         generated_features = self.missing_modality_feature_generation(shared_features, missing_indices, ablated, ablated_shape)
+        print("Generated features shape", generated_features[0].shape)
 
         # Insert the reconstructed modalities back at their original positions into fused_features
         for index, feature in sorted(zip(missing_indices, generated_features), key=lambda x: x[0]):
             fused_features.insert(index, feature)
         
+        print("Fused features shape", fused_features[0].shape)
+
         """ ================ Decoder ================"""
         # Prepare for decoding
         concatenated_features = torch.cat(fused_features, dim=2)
