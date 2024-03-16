@@ -208,11 +208,17 @@ class Exp(object):
             'selected miss_rate': self.args.miss_rate,
             'windowsize': self.args.windowsize,
             'input_length': self.args.input_length,
-            'c_in_per_mod': self.args.c_in_per_mod,
+            'c_in': self.args.c_in,
             'f_in': self.args.f_in,
             'filter_num': filter_num,
             'filter_size': filter_size,
-            'sa_div': sa_div
+            'sa_div': sa_div,
+            'difference': self.args.difference,
+            'filtering': self.args.filtering,
+            'mixup_probability': self.args.mixup_probability,
+            'mixup_alpha': self.args.mixup_alpha,
+            'mixup_argmax': self.args.mixup_argmax,
+            'random_augmentation_prob': self.args.random_augmentation_prob,
         }
 
         torch.manual_seed(self.args.seed)

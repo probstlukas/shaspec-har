@@ -309,6 +309,8 @@ class ShaSpec(nn.Module):
 
         self.decoder = Decoder(num_classes, self.num_of_sensor_channels, num_modalities, self.num_available_modalities, self.filter_num, ablate_shared_encoder, ablate_missing_modality_features)
 
+        self.missing_modality_embedding = nn.Parameter(torch.randn(1, input_shape[3], 2 * self.filter_num))
+
     def forward(self, x_list, missing_indices):
         """
         x_list: List of tensors, each tensor represents a modality (complete and missing modalities included)
@@ -347,17 +349,14 @@ class ShaSpec(nn.Module):
             for index, feature in sorted(zip(missing_indices, generated_features), key=lambda x: x[0]):
                 fused_features.insert(index, feature)
         else:
-        # No Shared Encoder or Missing Modality Feature Generation
-            # Assume fused_features already contains at least one tensor.
-            # Use the device of the first tensor in fused_features as the target device.
-            target_device = fused_features[0].device
-
-            # Generate random noise features for missing modalities on the target device
-            noise_features = [torch.rand_like(fused_features[0], device=target_device) for _ in missing_indices]
-    
-            # Insert the generated features into fused_features at their original positions
-            for index, feature in sorted(zip(missing_indices, noise_features), key=lambda x: x[0]):
-                fused_features.insert(index, feature)
+            # Replace the random noise with the missing modality embedding.
+            # The embedding is expanded to match the batch size of the input features.
+            batch_size = fused_features[0].shape[0]
+            missing_features = self.missing_modality_embedding.expand(batch_size, -1, -1)
+            
+            # Insert the missing modality embeddings into fused_features at their original positions
+            for index in sorted(missing_indices):
+                fused_features.insert(index, missing_features)
         
         """ ================ Decoder ================"""
         # Prepare for decoding
