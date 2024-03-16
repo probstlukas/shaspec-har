@@ -215,10 +215,6 @@ class Exp(object):
             'sa_div': sa_div,
             'difference': self.args.difference,
             'filtering': self.args.filtering,
-            'mixup_probability': self.args.mixup_probability,
-            'mixup_alpha': self.args.mixup_alpha,
-            'mixup_argmax': self.args.mixup_argmax,
-            'random_augmentation_prob': self.args.random_augmentation_prob,
         }
 
         torch.manual_seed(self.args.seed)
