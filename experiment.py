@@ -114,12 +114,6 @@ class Exp(object):
 
             # Split the tensor into the number of modalities and convert to list
             batch_x = list(torch.tensor_split(batch_x, self.args.num_modalities, dim=3))
-
-            # Setting the omitted modalities to NaN (or zero)
-            for index in missing_indices:
-                # Ensure the tensor at the omitted modality index is filled with 0
-                # batch_x[index] = torch.full_like(batch_x[index], float('nan'))
-                batch_x[index] = torch.full_like(batch_x[index], 0)
             
             return batch_x, batch_y, missing_indices
 
