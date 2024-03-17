@@ -108,7 +108,7 @@ class REALDISP_HAR_DATA(BASE_DATA):
         self.vali_keys    = []
         self.test_keys    = [13, 14, 15, 16]
 
-        # According to AAHL data preprocessing
+        # According to AALH data preprocessing
         self.LOCV_keys = [[1, 2, 3, 4], [5, 6, 7, 8], [9, 10, 11, 12], [13, 14, 15, 16]]
         self.all_keys  = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]
         self.sub_ids_of_each_sub = {}
