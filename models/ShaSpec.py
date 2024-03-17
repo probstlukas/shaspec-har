@@ -204,16 +204,10 @@ class MissingModalityFeatureGeneration(nn.Module):
         Returns:
             list: List of generated features for missing modalities.
         """
-
-        if not ablated:
-            # Calculate the mean along the stack dimension (0) to get the average feature
-            mean_feature = torch.mean(torch.stack(shared_features), dim=0)
-
-            generated_features = [mean_feature for _ in missing_indices]
-        else: 
-            # Noise features for ablated shared encoder or missing modality features
-            generated_features = [torch.randn(ablated_shape, device=device) for _ in missing_indices]
-
+        # Calculate the mean along the stack dimension (0) to get the average feature
+        mean_feature = torch.mean(torch.stack(shared_features), dim=0)
+        generated_features = [mean_feature for _ in missing_indices]
+        
         return generated_features
 
 
@@ -304,8 +298,9 @@ class ShaSpec(nn.Module):
             # Residual block for fusion
             self.residual_block = ResidualBlock(self.filter_num)
 
-        
-        self.missing_modality_feature_generation = MissingModalityFeatureGeneration()
+        # Both ablation studies omit the missing modality feature generation
+        if not self.ablate_shared_encoder and not self.ablate_missing_modality_features:
+            self.missing_modality_feature_generation = MissingModalityFeatureGeneration()
 
         self.decoder = Decoder(num_classes, self.num_of_sensor_channels, num_modalities, self.filter_num)
 
@@ -341,14 +336,26 @@ class ShaSpec(nn.Module):
             fused_features = specific_features
 
         """ ================ Missing Modality Feature Generation ================"""
-        ablated = self.ablate_shared_encoder or self.ablate_missing_modality_features
-        ablated_shape = specific_features[0].shape
-        device = specific_features[0].device
-        generated_features = self.missing_modality_feature_generation(shared_features, missing_indices, ablated, ablated_shape, device)
+        # Both ablation studies omit the missing modality feature generation
+        if not self.ablate_shared_encoder and not self.ablate_missing_modality_features:
+            # Reconstruct missing modalities using shared features
+            generated_features = self.missing_modality_feature_generation(shared_features, missing_indices)
 
-        # Insert the reconstructed modalities back at their original positions into fused_features
-        for index, feature in sorted(zip(missing_indices, generated_features), key=lambda x: x[0]):
-            fused_features.insert(index, feature)
+            # Insert the reconstructed modalities back at their original positions into fused_features
+            for index, feature in sorted(zip(missing_indices, generated_features), key=lambda x: x[0]):
+                fused_features.insert(index, feature)
+        else:
+        # Instead of reconstructing missing modalities, generate random noise features for missing modalities   
+            fused_features_shape = fused_features[0].shape
+            # Use the device of the first tensor in fused_features as the target device.
+            device = fused_features[0].device
+
+            # Noise features for ablated shared encoder or missing modality features
+            noise_features = [torch.randn(fused_features_shape, device=device) for _ in missing_indices]
+            
+            # Insert the generated features into fused_features at their original positions
+            for index, feature in sorted(zip(missing_indices, noise_features), key=lambda x: x[0]):
+                fused_features.insert(index, feature)
         
         """ ================ Decoder ================"""
 
@@ -357,5 +364,5 @@ class ShaSpec(nn.Module):
 
         # Decode to get final predictions
         prediction = self.decoder(concatenated_features)
-
+        
         return prediction
