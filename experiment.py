@@ -142,12 +142,6 @@ class Exp(object):
         else:
             raise NotImplementedError
 
-    def update_gamma(self ):
-        for n, parameter in self.model.named_parameters():
-            if "gamma" in n:
-                parameter.grad.data.add_(self.args.regulatization_tradeoff*torch.sign(parameter.data))  # L1
-
-
     def train(self):
         start_time = time.time()
 
