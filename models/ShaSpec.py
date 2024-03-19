@@ -318,15 +318,13 @@ class ShaSpec(nn.Module):
         # Process with specific encoders for available modalities
         specific_features = [self.specific_encoders[i](available_modalities[i]) for i in range(len(available_modalities))]    
 
-        shared_features = None
-        """ ================ Shared Encoder ================"""
         if not self.ablate_shared_encoder:
+            """ ================ Shared Encoder ================"""
             # Concatenate the modalities for shared processing
             concatenated_inputs = torch.cat(available_modalities, dim=3)  # Adjust dim according to how you concatenate
             shared_features = self.shared_encoder(concatenated_inputs)
 
-        """ ================ Fuse Specific and Shared Features ================"""
-        if not self.ablate_shared_encoder:
+            """ ================ Fuse Specific and Shared Features ================"""
             # Fuse specific and shared features for available modalities
             fused_features = []
             for specific, shared in zip(specific_features, shared_features):

@@ -127,7 +127,6 @@ class Exp(object):
 
         return data_loader
 
-
     def get_setting_name(self):
         if self.args.model_type == "shaspec":
             setting = "model_{}_data_{}_seed_{}_miss_rate_{}_ablate_shared_encoder_{}_ablate_missing_modality_features_{}".format(
